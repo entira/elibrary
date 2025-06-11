@@ -242,13 +242,14 @@ Enhancing index with detailed metadata...
 
 ### Performance Comparison
 
-| Metric | V1 Basic | V2 Enhanced | Improvement |
-|--------|----------|-------------|-------------|
-| Total segments | 8,975 | 14,486 | +61% |
-| Avg segment length | 482 chars | 362 chars | -25% (more precise) |
-| Cross-page chunks | 0 | 2,184 | New feature |
-| Page metadata | Basic | Detailed | Enhanced |
-| Unique pages indexed | N/A | 2,245 | New feature |
+| Metric | V1 Basic | V2 Enhanced | Improvement | ⚠️ Issues |
+|--------|----------|-------------|-------------|-----------|
+| Total segments | 8,975 | 14,486 | +61% | ✅ Good |
+| Avg segment length | 482 chars | 362 chars | -25% (more precise) | 🚨 Too small for RAG |
+| Cross-page chunks | 0 | 2,184 | New feature | ✅ Good concept |
+| Page metadata | Basic | Detailed | Enhanced | 🚨 Not in index |
+| Unique pages indexed | N/A | 2,245 | New feature | ✅ Good |
+| Text quality | Basic | Enhanced | Better | 🚨 Encoding errors |
 
 ### Vytvorené súbory
 
@@ -350,13 +351,31 @@ POST http://localhost:11434/api/generate
 }
 ```
 
-## ⚠️ Známe limitácie
+## ⚠️ Známe limitácie a problémy
 
-1. **PDF parsing**: Niektoré PDF môžu mať problémy s text extraction
-2. **Ollama dostupnosť**: Vyžaduje bežiaci Ollama server
-3. **Memory usage**: Veľké PDF môžu spotrebovať veľa RAM
-4. **Processing time**: Video generovanie je časovo náročné
-5. **Metadata quality**: Závisí od kvality text extraction a AI modelu
+### 🚨 Kritické problémy (vyžadujú opravu)
+
+1. **Malé chunky**: Súčasné chunky (86-399 znakov) sú príliš malé pre efektívny RAG
+   - Odporúčaná veľkosť: 800-1500 znakov pre lepší kontext
+   - Súčasný problém: LLM nemá dostatok kontextu na kvalitné odpovede
+
+2. **PDF enkódovacie problémy**: Text extraction má závažné chyby
+   - Náhodné medzery: "Gener ative AI" → "Generative AI"
+   - Null byte znaky: "wri\u0000en" → "written"  
+   - Rozdelené slová: "P ackt" → "Packt"
+
+3. **Chýbajúce enhanced metadata**: V2 processor nevytvára očakávanú štruktúru
+   - Enhanced metadata sa neukladajú do index súboru
+   - Chunky nemajú page references a metadata
+
+### 🔧 Ostatné limitácie
+
+4. **PDF parsing**: Niektoré PDF môžu mať problémy s text extraction
+5. **Ollama dostupnosť**: Vyžaduje bežiaci Ollama server
+6. **Memory usage**: Veľké PDF môžu spotrebovať veľa RAM
+7. **Processing time**: Video generovanie je časovo náročné
+8. **Metadata quality**: Závisí od kvality text extraction a AI modelu
+9. **Neúplné údaje**: Mnohé metadata polia zostávajú prázdne
 
 ## 🔧 Troubleshooting
 
@@ -379,14 +398,50 @@ curl http://localhost:11434/api/tags
 # Alebo zvýšiť system memory/swap
 ```
 
+## 🤖 GitHub Actions automatizácia
+
+Áno, je možné nastaviť GitHub Actions aby automaticky vytvorili pull requesty pri vytvorení issues:
+
+### Navrhovaný workflow:
+```yaml
+name: Auto-fix Issues
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  auto-fix:
+    if: contains(github.event.issue.labels.*.name, 'auto-fix')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Analyze issue and create PR
+        uses: ./.github/actions/claude-ai-fix
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+```
+
+### Požadované komponenty:
+1. **Issue template** s štruktúrovaným popisom problému
+2. **Custom GitHub Action** s Claude AI integráciou
+3. **Automatické testovanie** PR pred merge
+4. **Issue labeling** pre aktiváciu ('auto-fix', 'bug', 'enhancement')
+
 ## 📈 Rozšírenia
 
+### 🎯 Prioritné opravy
+1. **Zväčšenie chunk size**: 400 → 1000+ znakov
+2. **PDF text cleaning**: Oprava enkódovacích problémov
+3. **Enhanced metadata**: Správne ukladanie do index
+4. **GitHub Actions**: Automatizované PR z issues
+
 ### Možné vylepšenia
-1. **Batch processing**: Spracovanie po dávkach pre veľké kolekcie
-2. **Multi-threading**: Paralelné spracovanie PDF
-3. **Database storage**: Ukladanie do DB namiesto JSON
-4. **Web interface**: GUI pre browsing a vyhľadávanie
-5. **Alternative models**: Podpora pre iné LLM/embedding modely
+5. **Batch processing**: Spracovanie po dávkach pre veľké kolekcie
+6. **Multi-threading**: Paralelné spracovanie PDF
+7. **Database storage**: Ukladanie do DB namiesto JSON
+8. **Web interface**: GUI pre browsing a vyhľadávanie
+9. **Alternative models**: Podpora pre iné LLM/embedding modely
 
 ### Custom metadata fields
 ```python

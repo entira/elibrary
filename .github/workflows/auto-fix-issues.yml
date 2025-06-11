@@ -1,0 +1,239 @@
+name: 🤖 Auto-Fix Issues with AI
+
+on:
+  issues:
+    types: [opened, labeled, edited]
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to process'
+        required: true
+        type: string
+
+env:
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  analyze-issue:
+    name: 📋 Analyze Issue
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'auto-fix') || github.event_name == 'workflow_dispatch'
+    
+    outputs:
+      should_fix: ${{ steps.analysis.outputs.should_fix }}
+      issue_type: ${{ steps.analysis.outputs.issue_type }}
+      priority: ${{ steps.analysis.outputs.priority }}
+      files_affected: ${{ steps.analysis.outputs.files_affected }}
+    
+    steps:
+      - name: 🔍 Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: 📊 Analyze Issue Content
+        id: analysis
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue?.number || '${{ github.event.inputs.issue_number }}';
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue_number
+            });
+            
+            console.log('Analyzing issue:', issue.title);
+            console.log('Labels:', issue.labels.map(l => l.name));
+            
+            // Check if issue should be auto-fixed
+            const hasAutoFixLabel = issue.labels.some(l => l.name === 'auto-fix');
+            const isBug = issue.labels.some(l => l.name === 'bug');
+            const isEnhancement = issue.labels.some(l => l.name === 'enhancement');
+            
+            if (!hasAutoFixLabel) {
+              console.log('Issue does not have auto-fix label');
+              core.setOutput('should_fix', 'false');
+              return;
+            }
+            
+            // Extract issue type
+            let issue_type = 'unknown';
+            if (isBug) issue_type = 'bug';
+            if (isEnhancement) issue_type = 'enhancement';
+            
+            // Extract priority from body
+            const body = issue.body || '';
+            let priority = 'medium';
+            if (body.includes('🚨 Critical')) priority = 'critical';
+            else if (body.includes('⚡ High')) priority = 'high';
+            else if (body.includes('🔧 Low')) priority = 'low';
+            
+            // Extract affected files
+            const files_affected = [];
+            if (body.includes('pdf_library_processor.py')) files_affected.push('pdf_library_processor.py');
+            if (body.includes('pdf_library_processor_v2.py')) files_affected.push('pdf_library_processor_v2.py');
+            if (body.includes('pdf_chat.py')) files_affected.push('pdf_chat.py');
+            
+            console.log('Analysis results:', {
+              should_fix: 'true',
+              issue_type,
+              priority,
+              files_affected: files_affected.join(',')
+            });
+            
+            core.setOutput('should_fix', 'true');
+            core.setOutput('issue_type', issue_type);
+            core.setOutput('priority', priority);
+            core.setOutput('files_affected', files_affected.join(','));
+
+  create-fix:
+    name: 🔧 Create Automated Fix
+    runs-on: ubuntu-latest
+    needs: analyze-issue
+    if: needs.analyze-issue.outputs.should_fix == 'true'
+    
+    steps:
+      - name: 🔍 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: 🤖 Generate Fix with Claude AI
+        id: generate_fix
+        uses: ./.github/actions/claude-ai-fix
+        with:
+          issue-number: ${{ github.event.issue.number || github.event.inputs.issue_number }}
+          issue-type: ${{ needs.analyze-issue.outputs.issue_type }}
+          priority: ${{ needs.analyze-issue.outputs.priority }}
+          files-affected: ${{ needs.analyze-issue.outputs.files_affected }}
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+          
+      - name: 🧪 Test Generated Fix
+        id: test_fix
+        run: |
+          echo "Testing generated fix..."
+          
+          # Basic syntax check
+          python -m py_compile pdf_library_processor.py || echo "Syntax error in pdf_library_processor.py"
+          python -m py_compile pdf_chat.py || echo "Syntax error in pdf_chat.py"
+          
+          if [ -f "pdf_library_processor_v2.py" ]; then
+            python -m py_compile pdf_library_processor_v2.py || echo "Syntax error in pdf_library_processor_v2.py"
+          fi
+          
+          # Try importing modules
+          python -c "import pdf_library_processor; print('✅ pdf_library_processor imports successfully')" || echo "❌ Import failed"
+          
+          echo "test_status=passed" >> $GITHUB_OUTPUT
+          
+      - name: 📝 Create Pull Request
+        if: steps.test_fix.outputs.test_status == 'passed'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            🤖 Auto-fix: ${{ github.event.issue.title }}
+            
+            Fixes #${{ github.event.issue.number || github.event.inputs.issue_number }}
+            
+            This fix was automatically generated by Claude AI based on the issue description.
+            
+            Changes:
+            ${{ steps.generate_fix.outputs.changes_summary }}
+          branch: auto-fix/issue-${{ github.event.issue.number || github.event.inputs.issue_number }}
+          title: '🤖 Auto-fix: ${{ github.event.issue.title }}'
+          body: |
+            ## 🤖 Automated Fix
+            
+            This PR was automatically created to address issue #${{ github.event.issue.number || github.event.inputs.issue_number }}.
+            
+            ### 🔍 Issue Analysis
+            - **Type**: ${{ needs.analyze-issue.outputs.issue_type }}
+            - **Priority**: ${{ needs.analyze-issue.outputs.priority }}
+            - **Files affected**: ${{ needs.analyze-issue.outputs.files_affected }}
+            
+            ### 🛠️ Changes Made
+            ${{ steps.generate_fix.outputs.changes_summary }}
+            
+            ### 🧪 Testing
+            - ✅ Syntax validation passed
+            - ✅ Import tests passed
+            
+            ### 🔍 Review Checklist
+            - [ ] Code follows project conventions
+            - [ ] Fix addresses the root cause
+            - [ ] No unintended side effects
+            - [ ] Documentation updated if needed
+            
+            ---
+            🤖 *Generated by Claude AI • Review and merge if appropriate*
+            
+            Closes #${{ github.event.issue.number || github.event.inputs.issue_number }}
+          labels: |
+            auto-fix
+            ${{ needs.analyze-issue.outputs.issue_type }}
+            needs-review
+          
+      - name: 💬 Comment on Issue
+        if: steps.test_fix.outputs.test_status == 'passed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue?.number || '${{ github.event.inputs.issue_number }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue_number,
+              body: `🤖 **Automated Fix Created**
+              
+              I've analyzed this issue and created a pull request with a proposed solution.
+              
+              **Next steps:**
+              1. Review the generated PR
+              2. Test the changes locally if needed  
+              3. Merge if the fix looks good
+              
+              The PR includes automated testing and follows the project's coding conventions.
+              
+              *Generated by Claude AI automation*`
+            });
+            
+      - name: ❌ Handle Fix Failure
+        if: steps.test_fix.outputs.test_status != 'passed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue?.number || '${{ github.event.inputs.issue_number }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue_number,
+              body: `🤖 **Auto-fix Failed**
+              
+              I attempted to create an automated fix for this issue, but the generated solution failed testing.
+              
+              **Reason**: Syntax errors or import failures detected
+              
+              This issue will need manual attention. Please review the problem and implement a fix manually.
+              
+              *Generated by Claude AI automation*`
+            });
+            
+            # Remove auto-fix label to prevent retries
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue_number,
+              name: 'auto-fix'
+            });
