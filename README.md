@@ -136,31 +136,34 @@ encoder.build_video("library.mp4", "library_index.json")
 
 ```
 eLibrary/
-├── pdf_library_processor.py      # Main PDF processor
-├── pdf_chat.py                   # Interactive chat interface V2
+├── pdf_library_processor.py      # V1: Basic PDF processor
+├── pdf_library_processor_v2.py   # V2: Enhanced processor with page metadata
+├── pdf_library_chat.py           # Interactive chat interface
 ├── requirements.txt              # Python dependencies
 ├── README.md                     # This documentation
-├── CLAUDE.md                     # Claude Code session memory
-├── .github/                      # GitHub Actions automation
+├── .gitignore                    # Git ignore rules
+├── .github/                      # 🤖 GitHub Actions automation
 │   ├── workflows/
-│   │   └── auto-fix-issues.yml   # Automated issue fixing
+│   │   └── auto-fix-issues.yml   # Automated issue fixing workflow
 │   ├── actions/
 │   │   └── claude-ai-fix/        # Custom AI fix action
-│   ├── ISSUE_TEMPLATE/           # Issue templates
-│   └── README.md                 # GitHub Actions documentation
+│   ├── ISSUE_TEMPLATE/           # Structured issue templates
+│   │   ├── auto-fix-bug.md       # Bug report template
+│   │   └── auto-fix-enhancement.md # Enhancement template
+│   ├── README.md                 # GitHub Actions documentation
+│   ├── SETUP_INSTRUCTIONS.md     # Setup guide
+│   └── test_auto_fix.py          # Test script
 ├── pdf_books/                    # Input PDF files (excluded from git)
-│   ├── RAG-Driven Generative AI.pdf
-│   ├── LangChain and LlamaIndex Projects.pdf
-│   ├── Podcasting for dummies.pdf
-│   └── ... (7 total PDF books)
+│   ├── book1.pdf
+│   └── book2.pdf
 ├── memvid_out/                   # V1 Output (excluded from git)
-│   ├── library.mp4              # Video index
-│   ├── library_index.json       # Metadata
-│   └── library_index.faiss      # Vector index
-├── memvid_out_v2/               # V2 Output (legacy, has issues)
-│   ├── library_v2.mp4           # Video with encoding problems
-│   ├── library_v2_index.json    # Index with missing enhanced metadata
-│   └── library_v2_index.faiss   # Vector index
+│   ├── library.mp4              # V1 Video index
+│   ├── library_index.json       # V1 Metadata (8,975 segments)
+│   └── library_index.faiss      # V1 Vector index
+├── memvid_out_v2/               # V2 Enhanced Output (excluded from git)
+│   ├── library_v2.mp4           # V2 Video index
+│   ├── library_v2_index.json    # V2 Enhanced metadata (14,486 segments)
+│   └── library_v2_index.faiss   # V2 Vector index
 └── venv/                        # Python virtual environment (excluded)
 ```
 
@@ -198,35 +201,30 @@ cp *.pdf pdf_books/
 
 ### 4. Run Processing
 
-**Current Processor:**
+**Option A: Basic V1 Processor**
 ```bash
 python3 pdf_library_processor.py
 ```
 
-**Features:**
-- Basic PDF text extraction and chunking
-- Ollama-powered metadata extraction  
-- Video-based index generation
-- ~8,975 text segments with ~482 chars average
+**Option B: Enhanced V2 Processor (Recommended)**
+```bash
+python3 pdf_library_processor_v2.py
+```
 
-**Legacy V2 Output:**
-- Available in `memvid_out_v2/` but has known issues
-- Contains encoding problems and missing enhanced metadata
-- See GitHub Issues for planned fixes
+**V2 Benefits:**
+- 61% more text segments (14,486 vs 8,975)
+- Shorter, more precise chunks (362 vs 482 chars)
+- Cross-page context preservation (2,184 cross-page chunks)
+- Detailed page metadata for each chunk
+- Enhanced statistics and book information
 
 ### 5. Chat s knižnicou
 
 Po vytvorení video indexu môžete spustiť chat interface:
 
 ```bash
-python3 pdf_chat.py
+python3 pdf_library_chat.py
 ```
-
-**Features:**
-- Interactive library selection (V1/V2)
-- Semantic search across PDF content
-- Ollama-powered chat responses
-- Detailed library statistics
 
 ## 📊 Processing Results
 
@@ -255,14 +253,13 @@ Enhancing index with detailed metadata...
 
 ### Performance Comparison
 
-| Metric | V1 Basic | V2 Enhanced | Improvement | ⚠️ Issues |
-|--------|----------|-------------|-------------|-----------|
-| Total segments | 8,975 | 14,486 | +61% | ✅ Good |
-| Avg segment length | 482 chars | 362 chars | -25% (more precise) | 🚨 Too small for RAG |
-| Cross-page chunks | 0 | 2,184 | New feature | ✅ Good concept |
-| Page metadata | Basic | Detailed | Enhanced | 🚨 Not in index |
-| Unique pages indexed | N/A | 2,245 | New feature | ✅ Good |
-| Text quality | Basic | Enhanced | Better | 🚨 Encoding errors |
+| Metric | V1 Basic | V2 Enhanced | Improvement |
+|--------|----------|-------------|-------------|
+| Total segments | 8,975 | 14,486 | +61% |
+| Avg segment length | 482 chars | 362 chars | -25% (more precise) |
+| Cross-page chunks | 0 | 2,184 | New feature |
+| Page metadata | Basic | Detailed | Enhanced |
+| Unique pages indexed | N/A | 2,245 | New feature |
 
 ### Vytvorené súbory
 
@@ -364,31 +361,13 @@ POST http://localhost:11434/api/generate
 }
 ```
 
-## ⚠️ Známe limitácie a problémy
+## ⚠️ Známe limitácie
 
-### 🚨 Kritické problémy (vyžadujú opravu)
-
-1. **Malé chunky**: Súčasné chunky (86-399 znakov) sú príliš malé pre efektívny RAG
-   - Odporúčaná veľkosť: 800-1500 znakov pre lepší kontext
-   - Súčasný problém: LLM nemá dostatok kontextu na kvalitné odpovede
-
-2. **PDF enkódovacie problémy**: Text extraction má závažné chyby
-   - Náhodné medzery: "Gener ative AI" → "Generative AI"
-   - Null byte znaky: "wri\u0000en" → "written"  
-   - Rozdelené slová: "P ackt" → "Packt"
-
-3. **Chýbajúce enhanced metadata**: V2 processor nevytvára očakávanú štruktúru
-   - Enhanced metadata sa neukladajú do index súboru
-   - Chunky nemajú page references a metadata
-
-### 🔧 Ostatné limitácie
-
-4. **PDF parsing**: Niektoré PDF môžu mať problémy s text extraction
-5. **Ollama dostupnosť**: Vyžaduje bežiaci Ollama server
-6. **Memory usage**: Veľké PDF môžu spotrebovať veľa RAM
-7. **Processing time**: Video generovanie je časovo náročné
-8. **Metadata quality**: Závisí od kvality text extraction a AI modelu
-9. **Neúplné údaje**: Mnohé metadata polia zostávajú prázdne
+1. **PDF parsing**: Niektoré PDF môžu mať problémy s text extraction
+2. **Ollama dostupnosť**: Vyžaduje bežiaci Ollama server
+3. **Memory usage**: Veľké PDF môžu spotrebovať veľa RAM
+4. **Processing time**: Video generovanie je časovo náročné
+5. **Metadata quality**: Závisí od kvality text extraction a AI modelu
 
 ## 🔧 Troubleshooting
 
@@ -411,9 +390,9 @@ curl http://localhost:11434/api/tags
 # Alebo zvýšiť system memory/swap
 ```
 
-## 🤖 GitHub Actions automatizácia
+## 🤖 GitHub Actions Automatizácia
 
-✅ **Fully implemented automated issue fixing system!**
+✅ **Kompletne implementovaný automatizovaný systém na riešenie issues!**
 
 ### 🎯 Ako používať:
 
@@ -429,7 +408,7 @@ GitHub → Issues → New issue → Choose template:
 # Pridajte label na issue
 gh issue edit ISSUE_NUMBER --add-label "auto-fix"
 
-# Alebo cez web interface
+# Alebo cez web interface v GitHub
 ```
 
 #### 3. **Sledujte progress:**
@@ -448,27 +427,27 @@ gh pr list --label "auto-fix"
 - ✅ **Automated testing** a validation
 - ✅ **Smart labeling system**
 
-### 📋 Aktuálne issues pripravené na auto-fix:
-1. **[Chunk size too small for RAG](https://github.com/entira/elibrary/issues/1)** - High priority
-2. **[PDF encoding errors](https://github.com/entira/elibrary/issues/2)** - High priority  
-3. **[Missing enhanced metadata](https://github.com/entira/elibrary/issues/3)** - Medium priority
+### 📋 Ako to funguje:
+1. **Issue detection** - workflow reaguje na label `auto-fix`
+2. **AI analysis** - analyzuje problém a kód context
+3. **Fix generation** - vytvorí riešenie based on issue description
+4. **Automated testing** - validuje syntax a imports
+5. **PR creation** - vytvorí pull request s fix
+6. **Manual review** - vyžaduje human approval pred merge
 
-**Poznámka:** Auto-fix labels sú dočasne odstránené pre manual review.
+### 📚 Dokumentácia:
+- **Setup guide**: [`.github/SETUP_INSTRUCTIONS.md`](.github/SETUP_INSTRUCTIONS.md)
+- **System overview**: [`.github/README.md`](.github/README.md)
+- **Test script**: [`.github/test_auto_fix.py`](.github/test_auto_fix.py)
 
 ## 📈 Rozšírenia
 
-### 🎯 Prioritné opravy
-1. **Zväčšenie chunk size**: 400 → 1000+ znakov
-2. **PDF text cleaning**: Oprava enkódovacích problémov
-3. **Enhanced metadata**: Správne ukladanie do index
-4. **GitHub Actions**: Automatizované PR z issues
-
 ### Možné vylepšenia
-5. **Batch processing**: Spracovanie po dávkach pre veľké kolekcie
-6. **Multi-threading**: Paralelné spracovanie PDF
-7. **Database storage**: Ukladanie do DB namiesto JSON
-8. **Web interface**: GUI pre browsing a vyhľadávanie
-9. **Alternative models**: Podpora pre iné LLM/embedding modely
+1. **Batch processing**: Spracovanie po dávkach pre veľké kolekcie
+2. **Multi-threading**: Paralelné spracovanie PDF
+3. **Database storage**: Ukladanie do DB namiesto JSON
+4. **Web interface**: GUI pre browsing a vyhľadávanie
+5. **Alternative models**: Podpora pre iné LLM/embedding modely
 
 ### Custom metadata fields
 ```python
@@ -542,35 +521,21 @@ self.llm = OllamaLLM(model="mistral:latest")
 
 ## 📝 Version History
 
-### V2.1 (Current) - Cleaned & Automated  
-- **Repository cleanup** - removed problematic duplicate files
-- **GitHub Actions integration** - automated issue fixing system
-- **Updated documentation** - reflects current state and known issues
-- **Issue tracking** - 3 identified problems ready for fixing
-- **Single source processor** - `pdf_library_processor.py` as main processor
-
-### V2.0 (Legacy) - Enhanced Processing Issues
-- **14,486 segments** but with encoding problems  
-- **Missing enhanced metadata** in final output
-- **Text corruption** - null bytes, spacing issues
-- **Chunk size too small** - 86-399 chars (need 1000+)
-- **Status:** Available in `memvid_out_v2/` but needs fixes
+### V2.0 (Current) - Enhanced Processing
+- **14,486 segments** with detailed page metadata
+- **Cross-page chunks** for better context preservation
+- **Enhanced statistics** and book information
+- **Improved chunking** (400 chars vs 512 chars)
+- **Better RAG performance** with more precise segments
 
 ### V1.0 - Basic Processing
 - **8,975 segments** with basic metadata
 - **512-character chunks** with standard overlap
 - **Simple PDF processing** without page references
-- **Status:** Stable baseline implementation
 
 ---
 
 **Repository**: eLibrary PDF Knowledge Base  
-**Version**: 2.1 Cleaned & Automated  
-**Last Updated**: June 2025  
+**Version**: 2.0 Enhanced  
+**Last Updated**: December 2024  
 **License**: MIT
-
-### 🔗 Quick Links
-- **Issues**: [GitHub Issues](https://github.com/entira/elibrary/issues)
-- **Actions**: [GitHub Actions](https://github.com/entira/elibrary/actions)
-- **Templates**: [Issue Templates](https://github.com/entira/elibrary/issues/new/choose)
-- **Documentation**: [GitHub Actions Setup](.github/README.md)
