@@ -136,23 +136,31 @@ encoder.build_video("library.mp4", "library_index.json")
 
 ```
 eLibrary/
-├── pdf_library_processor.py      # V1: Basic PDF processor
-├── pdf_library_processor_v2.py   # V2: Enhanced processor with page metadata
-├── pdf_library_chat.py           # Interactive chat interface
+├── pdf_library_processor.py      # Main PDF processor
+├── pdf_chat.py                   # Interactive chat interface V2
 ├── requirements.txt              # Python dependencies
 ├── README.md                     # This documentation
-├── .gitignore                    # Git ignore rules
+├── CLAUDE.md                     # Claude Code session memory
+├── .github/                      # GitHub Actions automation
+│   ├── workflows/
+│   │   └── auto-fix-issues.yml   # Automated issue fixing
+│   ├── actions/
+│   │   └── claude-ai-fix/        # Custom AI fix action
+│   ├── ISSUE_TEMPLATE/           # Issue templates
+│   └── README.md                 # GitHub Actions documentation
 ├── pdf_books/                    # Input PDF files (excluded from git)
-│   ├── book1.pdf
-│   └── book2.pdf
+│   ├── RAG-Driven Generative AI.pdf
+│   ├── LangChain and LlamaIndex Projects.pdf
+│   ├── Podcasting for dummies.pdf
+│   └── ... (7 total PDF books)
 ├── memvid_out/                   # V1 Output (excluded from git)
-│   ├── library.mp4              # V1 Video index
-│   ├── library_index.json       # V1 Metadata (8,975 segments)
-│   └── library_index.faiss      # V1 Vector index
-├── memvid_out_v2/               # V2 Enhanced Output (excluded from git)
-│   ├── library_v2.mp4           # V2 Video index
-│   ├── library_v2_index.json    # V2 Enhanced metadata (14,486 segments)
-│   └── library_v2_index.faiss   # V2 Vector index
+│   ├── library.mp4              # Video index
+│   ├── library_index.json       # Metadata
+│   └── library_index.faiss      # Vector index
+├── memvid_out_v2/               # V2 Output (legacy, has issues)
+│   ├── library_v2.mp4           # Video with encoding problems
+│   ├── library_v2_index.json    # Index with missing enhanced metadata
+│   └── library_v2_index.faiss   # Vector index
 └── venv/                        # Python virtual environment (excluded)
 ```
 
@@ -190,30 +198,35 @@ cp *.pdf pdf_books/
 
 ### 4. Run Processing
 
-**Option A: Basic V1 Processor**
+**Current Processor:**
 ```bash
 python3 pdf_library_processor.py
 ```
 
-**Option B: Enhanced V2 Processor (Recommended)**
-```bash
-python3 pdf_library_processor_v2.py
-```
+**Features:**
+- Basic PDF text extraction and chunking
+- Ollama-powered metadata extraction  
+- Video-based index generation
+- ~8,975 text segments with ~482 chars average
 
-**V2 Benefits:**
-- 61% more text segments (14,486 vs 8,975)
-- Shorter, more precise chunks (362 vs 482 chars)
-- Cross-page context preservation (2,184 cross-page chunks)
-- Detailed page metadata for each chunk
-- Enhanced statistics and book information
+**Legacy V2 Output:**
+- Available in `memvid_out_v2/` but has known issues
+- Contains encoding problems and missing enhanced metadata
+- See GitHub Issues for planned fixes
 
 ### 5. Chat s knižnicou
 
 Po vytvorení video indexu môžete spustiť chat interface:
 
 ```bash
-python3 pdf_library_chat.py
+python3 pdf_chat.py
 ```
+
+**Features:**
+- Interactive library selection (V1/V2)
+- Semantic search across PDF content
+- Ollama-powered chat responses
+- Detailed library statistics
 
 ## 📊 Processing Results
 
@@ -400,33 +413,47 @@ curl http://localhost:11434/api/tags
 
 ## 🤖 GitHub Actions automatizácia
 
-Áno, je možné nastaviť GitHub Actions aby automaticky vytvorili pull requesty pri vytvorení issues:
+✅ **Fully implemented automated issue fixing system!**
 
-### Navrhovaný workflow:
-```yaml
-name: Auto-fix Issues
-on:
-  issues:
-    types: [opened, labeled]
+### 🎯 Ako používať:
 
-jobs:
-  auto-fix:
-    if: contains(github.event.issue.labels.*.name, 'auto-fix')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Analyze issue and create PR
-        uses: ./.github/actions/claude-ai-fix
-        with:
-          issue-number: ${{ github.event.issue.number }}
-          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+#### 1. **Vytvorte issue s template:**
+```
+GitHub → Issues → New issue → Choose template:
+- 🤖 Auto-Fix Bug Report
+- 🚀 Auto-Fix Enhancement
 ```
 
-### Požadované komponenty:
-1. **Issue template** s štruktúrovaným popisom problému
-2. **Custom GitHub Action** s Claude AI integráciou
-3. **Automatické testovanie** PR pred merge
-4. **Issue labeling** pre aktiváciu ('auto-fix', 'bug', 'enhancement')
+#### 2. **Aktivujte automatizáciu:**
+```bash
+# Pridajte label na issue
+gh issue edit ISSUE_NUMBER --add-label "auto-fix"
+
+# Alebo cez web interface
+```
+
+#### 3. **Sledujte progress:**
+```bash
+# GitHub Actions workflow sa automaticky spustí
+https://github.com/entira/elibrary/actions
+
+# AI vytvorí PR s riešením
+gh pr list --label "auto-fix"
+```
+
+### 🛠️ Implementované komponenty:
+- ✅ **GitHub Actions workflow** (`.github/workflows/auto-fix-issues.yml`)
+- ✅ **Issue templates** s štruktúrovaným formulárom
+- ✅ **Custom AI action** pre automated fixes
+- ✅ **Automated testing** a validation
+- ✅ **Smart labeling system**
+
+### 📋 Aktuálne issues pripravené na auto-fix:
+1. **[Chunk size too small for RAG](https://github.com/entira/elibrary/issues/1)** - High priority
+2. **[PDF encoding errors](https://github.com/entira/elibrary/issues/2)** - High priority  
+3. **[Missing enhanced metadata](https://github.com/entira/elibrary/issues/3)** - Medium priority
+
+**Poznámka:** Auto-fix labels sú dočasne odstránené pre manual review.
 
 ## 📈 Rozšírenia
 
@@ -515,21 +542,35 @@ self.llm = OllamaLLM(model="mistral:latest")
 
 ## 📝 Version History
 
-### V2.0 (Current) - Enhanced Processing
-- **14,486 segments** with detailed page metadata
-- **Cross-page chunks** for better context preservation
-- **Enhanced statistics** and book information
-- **Improved chunking** (400 chars vs 512 chars)
-- **Better RAG performance** with more precise segments
+### V2.1 (Current) - Cleaned & Automated  
+- **Repository cleanup** - removed problematic duplicate files
+- **GitHub Actions integration** - automated issue fixing system
+- **Updated documentation** - reflects current state and known issues
+- **Issue tracking** - 3 identified problems ready for fixing
+- **Single source processor** - `pdf_library_processor.py` as main processor
+
+### V2.0 (Legacy) - Enhanced Processing Issues
+- **14,486 segments** but with encoding problems  
+- **Missing enhanced metadata** in final output
+- **Text corruption** - null bytes, spacing issues
+- **Chunk size too small** - 86-399 chars (need 1000+)
+- **Status:** Available in `memvid_out_v2/` but needs fixes
 
 ### V1.0 - Basic Processing
 - **8,975 segments** with basic metadata
 - **512-character chunks** with standard overlap
 - **Simple PDF processing** without page references
+- **Status:** Stable baseline implementation
 
 ---
 
 **Repository**: eLibrary PDF Knowledge Base  
-**Version**: 2.0 Enhanced  
-**Last Updated**: December 2024  
+**Version**: 2.1 Cleaned & Automated  
+**Last Updated**: June 2025  
 **License**: MIT
+
+### 🔗 Quick Links
+- **Issues**: [GitHub Issues](https://github.com/entira/elibrary/issues)
+- **Actions**: [GitHub Actions](https://github.com/entira/elibrary/actions)
+- **Templates**: [Issue Templates](https://github.com/entira/elibrary/issues/new/choose)
+- **Documentation**: [GitHub Actions Setup](.github/README.md)
