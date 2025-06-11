@@ -96,9 +96,9 @@ class PDFLibraryProcessorV2:
         self.embedder = OllamaEmbedder()
         self.encoder = MemvidEncoder()
         
-        # Chunk configuration
-        self.chunk_size = 400  # Target characters per chunk
-        self.overlap = 50      # Character overlap between chunks
+        # Chunk configuration - optimized for RAG performance
+        self.chunk_size = 1200  # Target characters per chunk (increased for better RAG context)
+        self.overlap = 100      # Character overlap between chunks (proportionally increased)
         
     def extract_metadata_with_ollama(self, sample_text: str) -> Dict[str, str]:
         """Extract metadata using Ollama mistral:latest model."""
@@ -170,6 +170,29 @@ class PDFLibraryProcessorV2:
             "doi": ""
         }
     
+    def clean_extracted_text(self, text: str) -> str:
+        """Clean extracted PDF text from encoding issues and artifacts."""
+        if not text:
+            return ""
+        
+        # Remove null bytes and other control characters
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f]', '', text)
+        
+        # Fix multiple spaces while preserving intentional formatting
+        text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces/tabs to single space
+        text = re.sub(r'[ \t]*\n[ \t]*', '\n', text)  # Clean line breaks
+        text = re.sub(r'\n{3,}', '\n\n', text)  # Limit multiple newlines
+        
+        # Fix common PDF extraction issues
+        text = re.sub(r'([a-z])(\s+)([A-Z])', r'\1 \3', text)  # Fix split words like "P ackt"
+        text = re.sub(r'([a-z])\s+([a-z])\s+([a-z])', lambda m: m.group(0) if len(m.group(0)) > 10 else m.group(1) + m.group(2) + m.group(3), text)
+        
+        # Remove artifacts and clean up
+        text = text.replace('\u0000', '')  # Remove null characters
+        text = text.replace('\ufffd', '')  # Remove replacement characters
+        
+        return text.strip()
+    
     def extract_text_with_pages(self, pdf_path: Path) -> Tuple[Dict[int, str], int]:
         """Extract text from PDF with page-by-page mapping."""
         try:
@@ -182,7 +205,9 @@ class PDFLibraryProcessorV2:
                 for page_num, page in enumerate(pdf_reader.pages, 1):
                     try:
                         page_text = page.extract_text()
-                        page_texts[page_num] = page_text.strip()
+                        # Clean extracted text to fix encoding issues
+                        cleaned_text = self.clean_extracted_text(page_text)
+                        page_texts[page_num] = cleaned_text
                     except Exception as e:
                         print(f"Error extracting text from page {page_num}: {e}")
                         page_texts[page_num] = ""
@@ -452,7 +477,7 @@ class PDFLibraryProcessorV2:
         
         print(f"Found {len(pdf_files)} PDF files to process")
         print(f"Output directory: {self.output_dir}")
-        print(f"Chunk size: {self.chunk_size} chars, Overlap: {self.overlap} chars")
+        print(f"Chunk size: {self.chunk_size} chars, Overlap: {self.overlap} chars (optimized for RAG)")
         print()
         
         processed_count = 0
