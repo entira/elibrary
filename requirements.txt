@@ -1,0 +1,4 @@
+memvid
+PyPDF2
+requests
+tqdm
