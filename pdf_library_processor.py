@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PDF Library Processor with Memvid
-Processes PDF books, extracts metadata using Ollama, and creates video index with memvid.
+PDF Library Processor v2 with Enhanced Page Metadata
+Processes PDF books with detailed page tracking for each chunk.
 """
 
 import os
@@ -9,7 +9,7 @@ import json
 import re
 import requests
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import PyPDF2
 from tqdm import tqdm
 from memvid import MemvidEncoder
@@ -53,10 +53,41 @@ class OllamaEmbedder:
         return embeddings
 
 
-class PDFLibraryProcessor:
-    """Main processor for PDF library."""
+class EnhancedChunk:
+    """Enhanced chunk with detailed page metadata."""
     
-    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out"):
+    def __init__(self, text: str, start_page: int, end_page: int, 
+                 chunk_index: int, total_chunks_on_pages: int):
+        self.text = text.strip()
+        self.start_page = start_page
+        self.end_page = end_page
+        self.chunk_index = chunk_index
+        self.total_chunks_on_pages = total_chunks_on_pages
+        self.word_count = len(text.split())
+        
+    def get_page_reference(self) -> str:
+        """Get human-readable page reference."""
+        if self.start_page == self.end_page:
+            return str(self.start_page)
+        else:
+            return f"{self.start_page}-{self.end_page}"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for metadata."""
+        return {
+            "start_page": self.start_page,
+            "end_page": self.end_page,
+            "page_reference": self.get_page_reference(),
+            "chunk_index": self.chunk_index,
+            "total_chunks_on_pages": self.total_chunks_on_pages,
+            "word_count": self.word_count
+        }
+
+
+class PDFLibraryProcessorV2:
+    """Enhanced PDF processor with detailed page tracking."""
+    
+    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2"):
         self.pdf_dir = Path(pdf_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
@@ -64,6 +95,10 @@ class PDFLibraryProcessor:
         # Initialize embedder and encoder
         self.embedder = OllamaEmbedder()
         self.encoder = MemvidEncoder()
+        
+        # Chunk configuration
+        self.chunk_size = 400  # Target characters per chunk
+        self.overlap = 50      # Character overlap between chunks
         
     def extract_metadata_with_ollama(self, sample_text: str) -> Dict[str, str]:
         """Extract metadata using Ollama mistral:latest model."""
@@ -135,60 +170,158 @@ class PDFLibraryProcessor:
             "doi": ""
         }
     
-    def extract_text_from_pdf(self, pdf_path: Path) -> tuple[List[str], int]:
-        """Extract text from PDF and return chunks and page count."""
+    def extract_text_with_pages(self, pdf_path: Path) -> Tuple[Dict[int, str], int]:
+        """Extract text from PDF with page-by-page mapping."""
         try:
             with open(pdf_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 num_pages = len(pdf_reader.pages)
                 
-                chunks = []
-                current_chunk = ""
-                current_page = 1
+                page_texts = {}
                 
                 for page_num, page in enumerate(pdf_reader.pages, 1):
                     try:
                         page_text = page.extract_text()
-                        
-                        # Split page text into smaller chunks
-                        words = page_text.split()
-                        for i in range(0, len(words), 100):  # ~100 words per chunk
-                            chunk_words = words[i:i+100]
-                            chunk_text = " ".join(chunk_words)
-                            
-                            if chunk_text.strip():
-                                chunks.append({
-                                    "text": chunk_text,
-                                    "page": page_num
-                                })
-                    
+                        page_texts[page_num] = page_text.strip()
                     except Exception as e:
                         print(f"Error extracting text from page {page_num}: {e}")
-                        continue
+                        page_texts[page_num] = ""
                 
-                return chunks, num_pages
+                return page_texts, num_pages
                 
         except Exception as e:
             print(f"Error reading PDF {pdf_path}: {e}")
-            return [], 0
+            return {}, 0
     
-    def process_pdf(self, pdf_path: Path) -> bool:
-        """Process single PDF file."""
+    def create_enhanced_chunks(self, page_texts: Dict[int, str]) -> List[EnhancedChunk]:
+        """Create chunks with enhanced page metadata."""
+        chunks = []
+        chunk_index = 0
+        
+        # Sort pages by number
+        sorted_pages = sorted(page_texts.keys())
+        
+        # Process each page
+        for page_num in sorted_pages:
+            page_text = page_texts[page_num]
+            
+            if not page_text.strip():
+                continue
+            
+            # Split page into chunks
+            page_chunks = self._split_text_into_chunks(page_text)
+            
+            # Create enhanced chunks for this page
+            for i, chunk_text in enumerate(page_chunks):
+                if chunk_text.strip():
+                    enhanced_chunk = EnhancedChunk(
+                        text=chunk_text,
+                        start_page=page_num,
+                        end_page=page_num,
+                        chunk_index=chunk_index,
+                        total_chunks_on_pages=len(page_chunks)
+                    )
+                    chunks.append(enhanced_chunk)
+                    chunk_index += 1
+        
+        # Handle cross-page chunks (optional enhancement)
+        cross_page_chunks = self._create_cross_page_chunks(page_texts, sorted_pages)
+        for cross_chunk in cross_page_chunks:
+            chunks.append(cross_chunk)
+            chunk_index += 1
+        
+        return chunks
+    
+    def _split_text_into_chunks(self, text: str) -> List[str]:
+        """Split text into chunks with overlap."""
+        if not text.strip():
+            return []
+        
+        chunks = []
+        start = 0
+        
+        while start < len(text):
+            # Find end position
+            end = start + self.chunk_size
+            
+            # If we're not at the end, try to break at word boundary
+            if end < len(text):
+                # Look for word boundary within last 50 characters
+                word_boundary = text.rfind(' ', max(start, end - 50), end)
+                if word_boundary > start:
+                    end = word_boundary
+            
+            chunk = text[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            
+            # Move start position with overlap
+            start = max(start + 1, end - self.overlap)
+            
+            # Prevent infinite loop
+            if start >= len(text):
+                break
+        
+        return chunks
+    
+    def _create_cross_page_chunks(self, page_texts: Dict[int, str], 
+                                sorted_pages: List[int]) -> List[EnhancedChunk]:
+        """Create chunks that span across pages for better context."""
+        cross_chunks = []
+        
+        for i in range(len(sorted_pages) - 1):
+            current_page = sorted_pages[i]
+            next_page = sorted_pages[i + 1]
+            
+            current_text = page_texts[current_page]
+            next_text = page_texts[next_page]
+            
+            if not current_text.strip() or not next_text.strip():
+                continue
+            
+            # Take last 200 chars from current page and first 200 from next
+            current_end = current_text[-200:].strip()
+            next_start = next_text[:200].strip()
+            
+            if len(current_end) > 50 and len(next_start) > 50:
+                cross_text = current_end + " " + next_start
+                
+                cross_chunk = EnhancedChunk(
+                    text=cross_text,
+                    start_page=current_page,
+                    end_page=next_page,
+                    chunk_index=-1,  # Will be set later
+                    total_chunks_on_pages=1
+                )
+                cross_chunks.append(cross_chunk)
+        
+        return cross_chunks
+    
+    def process_pdf_enhanced(self, pdf_path: Path) -> bool:
+        """Process single PDF with enhanced chunking."""
         try:
             print(f"Processing: {pdf_path.name}")
             
-            # Extract text chunks
-            chunks, num_pages = self.extract_text_from_pdf(pdf_path)
+            # Extract text with page mapping
+            page_texts, num_pages = self.extract_text_with_pages(pdf_path)
             
-            if not chunks:
+            if not page_texts:
                 print(f"Warning: No text extracted from {pdf_path.name}")
                 return False
             
-            print(f"  - Pages: {num_pages}, Chunks: {len(chunks)}")
+            # Create enhanced chunks
+            enhanced_chunks = self.create_enhanced_chunks(page_texts)
             
-            # Get first 10 chunks for metadata extraction
-            sample_chunks = chunks[:10]
-            sample_text = "\n".join([chunk["text"] for chunk in sample_chunks])
+            if not enhanced_chunks:
+                print(f"Warning: No chunks created from {pdf_path.name}")
+                return False
+            
+            print(f"  - Pages: {num_pages}")
+            print(f"  - Enhanced chunks: {len(enhanced_chunks)}")
+            
+            # Get sample text for metadata extraction (first 10 chunks)
+            sample_chunks = enhanced_chunks[:10]
+            sample_text = "\n".join([chunk.text for chunk in sample_chunks])
             
             # Extract metadata using Ollama
             print("  - Extracting metadata...")
@@ -198,18 +331,115 @@ class PDFLibraryProcessor:
             print(f"  - Authors: {metadata['authors'][:50]}{'...' if len(metadata['authors']) > 50 else ''}")
             print(f"  - Year: {metadata['year']}")
             
-            # Add PDF to memvid encoder using built-in method
-            # Note: memvid handles chunking internally, metadata will be added to video description
-            self.encoder.add_pdf(str(pdf_path), chunk_size=512, overlap=50)
+            # Add chunks to memvid with enhanced metadata
+            for chunk in enhanced_chunks:
+                chunk_metadata = {
+                    "file_name": pdf_path.name,
+                    "title": metadata["title"],
+                    "authors": metadata["authors"],
+                    "publishers": metadata["publishers"],
+                    "year": metadata["year"],
+                    "doi": metadata["doi"],
+                    "num_pages": num_pages,
+                    **chunk.to_dict()  # Add enhanced chunk metadata
+                }
+                
+                # Add to encoder (we need to use add_chunks method)
+                self.encoder.add_chunks([chunk.text])
+                
+                # Store metadata separately for later association
+                if not hasattr(self.encoder, '_enhanced_metadata'):
+                    self.encoder._enhanced_metadata = []
+                self.encoder._enhanced_metadata.append(chunk_metadata)
             
+            print(f"  - Added {len(enhanced_chunks)} chunks with page references")
             return True
             
         except Exception as e:
             print(f"Error processing {pdf_path.name}: {e}")
             return False
     
+    def create_enhanced_index(self, video_path: str, index_path: str):
+        """Create enhanced index with detailed metadata."""
+        try:
+            # Build basic video
+            print("Building video...")
+            self.encoder.build_video(video_path, index_path)
+            
+            # Enhance the index with our metadata
+            if hasattr(self.encoder, '_enhanced_metadata'):
+                print("Enhancing index with detailed metadata...")
+                
+                # Read the basic index
+                with open(index_path, 'r', encoding='utf-8') as f:
+                    index_data = json.load(f)
+                
+                # Enhance chunks with our metadata
+                if 'chunks' in index_data and len(index_data['chunks']) == len(self.encoder._enhanced_metadata):
+                    for i, chunk in enumerate(index_data['chunks']):
+                        chunk['metadata'] = self.encoder._enhanced_metadata[i]
+                
+                # Add summary statistics
+                index_data['enhanced_stats'] = self._calculate_enhanced_stats()
+                
+                # Write enhanced index
+                with open(index_path, 'w', encoding='utf-8') as f:
+                    json.dump(index_data, f, indent=2, ensure_ascii=False)
+                
+                print("✅ Enhanced index created successfully!")
+            
+        except Exception as e:
+            print(f"Error creating enhanced index: {e}")
+    
+    def _calculate_enhanced_stats(self) -> Dict[str, Any]:
+        """Calculate enhanced statistics."""
+        if not hasattr(self.encoder, '_enhanced_metadata'):
+            return {}
+        
+        metadata_list = self.encoder._enhanced_metadata
+        
+        # Count by file
+        files = {}
+        total_pages = set()
+        cross_page_chunks = 0
+        
+        for meta in metadata_list:
+            file_name = meta.get('file_name', 'Unknown')
+            start_page = meta.get('start_page', 0)
+            end_page = meta.get('end_page', 0)
+            
+            if file_name not in files:
+                files[file_name] = {
+                    'chunks': 0,
+                    'pages': set(),
+                    'title': meta.get('title', ''),
+                    'authors': meta.get('authors', ''),
+                    'year': meta.get('year', '')
+                }
+            
+            files[file_name]['chunks'] += 1
+            files[file_name]['pages'].add(start_page)
+            if end_page != start_page:
+                files[file_name]['pages'].add(end_page)
+                cross_page_chunks += 1
+            
+            total_pages.add(f"{file_name}:{start_page}")
+        
+        # Convert sets to counts
+        for file_name in files:
+            files[file_name]['unique_pages'] = len(files[file_name]['pages'])
+            files[file_name]['pages'] = list(files[file_name]['pages'])
+        
+        return {
+            'total_files': len(files),
+            'total_chunks': len(metadata_list),
+            'total_unique_pages': len(total_pages),
+            'cross_page_chunks': cross_page_chunks,
+            'files': files
+        }
+    
     def process_library(self):
-        """Process entire PDF library."""
+        """Process entire PDF library with enhanced metadata."""
         if not self.pdf_dir.exists():
             print(f"Error: PDF directory {self.pdf_dir} does not exist!")
             return
@@ -221,42 +451,44 @@ class PDFLibraryProcessor:
             return
         
         print(f"Found {len(pdf_files)} PDF files to process")
+        print(f"Output directory: {self.output_dir}")
+        print(f"Chunk size: {self.chunk_size} chars, Overlap: {self.overlap} chars")
+        print()
         
         processed_count = 0
-        total_pages = 0
-        total_chunks = 0
         
         # Process each PDF
         for pdf_path in tqdm(pdf_files, desc="Processing PDFs"):
-            if self.process_pdf(pdf_path):
+            if self.process_pdf_enhanced(pdf_path):
                 processed_count += 1
         
         if processed_count == 0:
             print("No PDFs were successfully processed!")
             return
         
-        print(f"\nBuilding video index...")
+        print(f"\nBuilding enhanced video index...")
         print(f"Processed {processed_count} PDFs successfully")
         
-        # Build final video and index
+        # Build final video and enhanced index
         try:
-            self.encoder.build_video(
-                str(self.output_dir / "library.mp4"),
-                str(self.output_dir / "library_index.json")
-            )
+            video_path = str(self.output_dir / "library_v2.mp4")
+            index_path = str(self.output_dir / "library_v2_index.json")
+            
+            self.create_enhanced_index(video_path, index_path)
             
             print(f"\n✅ SUCCESS!")
             print(f"📚 Processed {processed_count} PDF books")
-            print(f"🎥 Video saved to: {self.output_dir / 'library.mp4'}")
-            print(f"📋 Index saved to: {self.output_dir / 'library_index.json'}")
+            print(f"🎥 Enhanced video: {self.output_dir / 'library_v2.mp4'}")
+            print(f"📋 Enhanced index: {self.output_dir / 'library_v2_index.json'}")
+            print(f"📄 Each chunk includes detailed page references!")
             
         except Exception as e:
-            print(f"Error building video: {e}")
+            print(f"Error building enhanced video: {e}")
 
 
 def main():
     """Main entry point."""
-    processor = PDFLibraryProcessor()
+    processor = PDFLibraryProcessorV2()
     processor.process_library()
 
 
