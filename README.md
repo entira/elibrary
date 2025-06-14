@@ -15,11 +15,13 @@ Two-version processing pipeline with enhanced metadata extraction and cross-page
 - **Token-Based Chunking**: 500-token sliding window chunks with 15% overlap for optimal RAG performance
 - **Semantic Boundary Preservation**: Intelligent sentence boundary detection prevents fragmented chunks
 - **Issue #2 Resolution**: Fixes "Gener ative AI", null bytes, and split word problems
-- **AI Metadata Extraction**: Ollama-powered extraction of titles, authors, publishers, years
+- **AI Metadata Extraction**: Ollama-powered extraction of titles, authors, publishers, years, DOI/ISBN
 - **Video-based Indexing**: QR-encoded text chunks in video frames for efficient storage
 - **Cross-page Context**: Enhanced V2 processor preserves context between pages
 - **RAG Integration**: Ready for Retrieval Augmented Generation workflows
-- **Interactive Chat**: Query your PDF library with natural language
+- **Interactive Chat**: Query your PDF library with natural language and source citations
+- **Accurate Page References**: Real PDF page numbers for precise citation tracking
+- **Enhanced Library Display**: Complete metadata including publishers, DOI/ISBN information
 
 ## 📋 Požiadavky
 
@@ -469,64 +471,99 @@ Return only valid JSON."""
 
 # PDF Library Chat Interface
 
-Interaktívny chat systém pre komunikáciu s PDF knižnicou pomocou video pamäte.
+Interactive chat system for communicating with PDF library using video memory.
 
-## 🎯 Funkcionalita
+## 🎯 Functionality
 
 ### Chat Commands
 ```
-help          - Zobrazí nápovedu
-info          - Informácie o knižnici  
-search <query>- Vyhľadávanie v obsahu
-stats         - Štatistiky session
-clear         - Vyčistí obrazovku
-exit/quit     - Ukončí chat
+help          - Show help message
+info          - Library information  
+search <query>- Search library content
+stats         - Session statistics
+clear         - Clear screen
+exit/quit     - Exit chat
 ```
 
-### Príklady používania
+### Usage Examples
 
 ```bash
-🤔 You: What is RAG in AI?
-🤖 Assistant: Based on the library content, RAG (Retrieval Augmented Generation) is...
+🤔 You: How to make better podcasts?
+🤖 Assistant: To make better podcasts, you should:
+
+1. Balance speed and quality. [Podcasting 100 Success Secrets, page 54]
+2. Limit the podcast to a short running time. [Podcasting For Dummies, page 27]
+3. Use proper microphone technique. [Podcasting 100 Success Secrets, page 140]
+
+⏱️ Response time: 3.45s
+
+🔍 DEBUG - Full prompt used:
+============================================================
+[Complete prompt with context and citations shown here]
+============================================================
 
 🤔 You: search machine learning
 🔍 Search results for: 'machine learning' (0.15s)
 📄 Relevant passages:
 ──────────────────────────────────────────────────
-[Relevant text chunks from PDFs...]
+[Relevant text chunks from PDFs with citations...]
 ──────────────────────────────────────────────────
 
 🤔 You: info
 📖 Library Overview:
    📚 Total books: 7
-   📝 Total chunks: 8975
+   📝 Total chunks: 5109
 
 📑 Books in library:
    1. RAG-Driven Generative AI
       📖 Author(s): Denis Rothman
+      🏢 Publisher(s): Packt Publishing
       📅 Year: 2024
-      📝 Chunks: 1079
+      🔗 DOI/ISBN: 978-1-83620-091-8
+      📄 Pages: 517
+      📝 Chunks: 1022
 ```
 
-## 🔧 Technické detaily
+## 🎯 New Citation Features
 
-### Komponenty
-- **PDFLibraryChat**: Hlavná trieda pre chat interface
-- **OllamaLLM**: Lokálne LLM pre generovanie odpovedí  
-- **MemvidChat**: Video pamäť search a retrieval
+### Enhanced Chat Responses
+- **Source Citations**: Every response includes specific book titles and page numbers
+- **Accurate Page References**: Uses real PDF page numbers for easy verification
+- **Debug Mode**: Full prompt and context shown after each response
+- **Citation Format**: `[Book Title, page X]` at end of sentences
+
+### Enhanced Library Display
+- **Complete Metadata**: Shows authors, publishers, year, DOI/ISBN
+- **Full Titles**: No truncation of book titles or author names
+- **Organized Layout**: Pages listed before chunks for better readability
+
+## 🔧 Technical Details
+
+### Components
+- **PDFLibraryChatV2**: Main chat interface class
+- **OllamaLLM**: Local LLM for response generation  
+- **MemvidChat/MemvidRetriever**: Video memory search and retrieval
+- **Citation Engine**: Matches search results with enhanced metadata
 
 ### Workflow
-1. **Načítanie video indexu** a validácia súborov
-2. **Semantic search** v PDF chunks pomocou embeddings
-3. **Context retrieval** z relevantných chunks
-4. **LLM response** pomocou Ollama mistral:latest
-5. **Formátovaný výstup** s metadátami
+1. **Load video index** and validate files
+2. **Semantic search** in PDF chunks using embeddings
+3. **Context retrieval** with metadata matching
+4. **Citation addition** using enhanced_metadata from index
+5. **LLM response** using Ollama mistral:latest with citation instructions
+6. **Formatted output** with source citations and debug information
 
-### Konfigurácia
+### Configuration
 ```python
-# V PDFLibraryChat.__init__()
-self.chat = MemvidChat(video_file, index_file)
+# Enhanced initialization
+self.chat = MemvidChat(video_file, index_file, llm_provider=None)
 self.llm = OllamaLLM(model="mistral:latest")
+
+# Citation prompt format
+INSTRUCTIONS:
+- Put citations at the END of sentences, not in the middle
+- Use format: [Book Title, page X]
+- Example: "Balance speed with quality. [Podcasting 100 Success Secrets, page 54]"
 ```
 
 ## 📝 Version History

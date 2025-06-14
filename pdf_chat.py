@@ -26,7 +26,7 @@ class OllamaLLM:
     def generate_response(self, prompt: str, context: str = "") -> str:
         """Generate response using Ollama."""
         try:
-            # Combine context and prompt
+            # Combine context and prompt with citation requirements
             full_prompt = f"""Based on the following context from PDF books, answer the user's question:
 
 CONTEXT:
@@ -34,7 +34,13 @@ CONTEXT:
 
 QUESTION: {prompt}
 
-Please provide a helpful answer based on the context. If the context doesn't contain relevant information, say so politely."""
+INSTRUCTIONS:
+- Provide a helpful answer based on the context
+- Put citations at the END of sentences, not in the middle
+- Use the exact citation format provided in the context: [Book Title, page X]
+- Example: "Balance speed with quality. [Podcasting 100 Success Secrets, page 54]"
+- If the context doesn't contain relevant information, say so politely
+- Always cite your sources when making claims"""
 
             response = requests.post(
                 f"{self.base_url}/api/generate",
@@ -85,8 +91,13 @@ class PDFLibraryChatV2:
         # Initialize Ollama LLM if requested
         self.llm = OllamaLLM() if use_ollama else None
         
-        # Initialize MemvidChat
-        self.chat = MemvidChat(str(self.video_file), str(self.index_file))
+        # Initialize MemvidChat without LLM (we use our own Ollama)
+        try:
+            self.chat = MemvidChat(str(self.video_file), str(self.index_file), llm_provider=None)
+        except:
+            # Fallback: initialize without LLM parameters
+            from memvid import MemvidRetriever
+            self.chat = MemvidRetriever(str(self.video_file), str(self.index_file))
         
         # Session stats
         self.session_stats = {
@@ -273,7 +284,9 @@ class PDFLibraryChatV2:
                     stats['books'][clean_name] = {
                         'title': file_data.get('title', clean_name),
                         'authors': file_data.get('authors', 'Unknown'),
+                        'publishers': file_data.get('publishers', 'Unknown'),
                         'year': file_data.get('year', 'Unknown'),
+                        'doi': file_data.get('doi', 'Unknown'),
                         'chunks': file_data.get('chunks', 0),
                         'pages': file_data.get('unique_pages', 0)
                     }
@@ -292,7 +305,9 @@ class PDFLibraryChatV2:
                         stats['books'][pdf_path.stem] = {
                             'title': title,
                             'authors': 'Unknown',
+                            'publishers': 'Unknown',
                             'year': 'Unknown',
+                            'doi': 'Unknown',
                             'chunks': stats['total_chunks'] // len(pdf_files),  # Estimate
                             'pages': 'Unknown'
                         }
@@ -319,15 +334,22 @@ class PDFLibraryChatV2:
         
         print("📑 Books in library:")
         for i, (file_key, info) in enumerate(stats['books'].items(), 1):
-            title = info['title'][:60] + '...' if len(info['title']) > 60 else info['title']
-            authors = info['authors'][:40] + '...' if len(str(info['authors'])) > 40 else info['authors']
+            # Display full title without truncation
+            title = info['title']
+            # Remove list brackets and quotes from authors if present
+            authors = str(info['authors']).strip("[]'\"")
+            publishers = str(info['publishers']).strip("[]'\"") if info.get('publishers', 'Unknown') != 'Unknown' else 'Unknown'
+            doi = info.get('doi', 'Unknown')
             
             print(f"   {i:2d}. {title}")
             print(f"       📖 Author(s): {authors}")
+            print(f"       🏢 Publisher(s): {publishers}")
             print(f"       📅 Year: {info['year']}")
-            print(f"       📝 Chunks: {info['chunks']}")
+            if doi != 'Unknown':
+                print(f"       🔗 DOI/ISBN: {doi}")
             if info['pages'] != 'Unknown':
                 print(f"       📄 Pages: {info['pages']}")
+            print(f"       📝 Chunks: {info['chunks']}")
             print()
     
     def search_library(self, query: str, limit: int = 5) -> str:
@@ -354,6 +376,41 @@ class PDFLibraryChatV2:
         except Exception as e:
             return f"❌ Search error: {e}"
     
+    def _add_citations_to_context(self, context_chunks: List[str]) -> List[str]:
+        """Add source citations to context chunks by matching with index metadata."""
+        try:
+            # Load index data
+            with open(self.index_file, 'r', encoding='utf-8') as f:
+                index_data = json.load(f)
+            
+            metadata_list = index_data.get('metadata', [])
+            
+            # Try to match context chunks with metadata
+            context_with_citations = []
+            for i, chunk in enumerate(context_chunks):
+                # Find matching metadata by text content
+                citation = f"[Unknown source, page Unknown]"
+                
+                # Search for matching chunk in metadata
+                for meta in metadata_list:
+                    if meta.get('text', '') == chunk.strip():
+                        # Found match, add citation info
+                        chunk_metadata = meta.get('enhanced_metadata', {})
+                        if chunk_metadata:
+                            title = chunk_metadata.get('title', 'Unknown title')
+                            page_ref = chunk_metadata.get('page_reference', 'Unknown page')
+                            citation = f"[{title}, page {page_ref}]"
+                        break
+                
+                # Put citation at the end for cleaner LLM processing
+                context_with_citations.append(f"{chunk} {citation}")
+            
+            return context_with_citations
+            
+        except Exception as e:
+            # Fallback: return context without citations
+            return [f"{chunk} [Unknown source]" for i, chunk in enumerate(context_chunks)]
+    
     def chat_with_library(self, query: str) -> str:
         """Chat with the library using context and LLM."""
         try:
@@ -365,15 +422,34 @@ class PDFLibraryChatV2:
             if not context_chunks:
                 return "🔍 I couldn't find relevant information in the library for your question."
             
-            # Join context chunks
-            context = "\n\n".join([f"[Context {i+1}]: {chunk}" for i, chunk in enumerate(context_chunks)])
+            # Load index to get metadata for citations
+            context_with_citations = self._add_citations_to_context(context_chunks)
+            
+            context = "\n\n".join(context_with_citations)
             
             # Generate response using Ollama LLM
             if self.use_ollama and self.llm:
                 response = self.llm.generate_response(query, context)
                 response_time = time.time() - start_time
                 
+                # Add debug information with full prompt
+                debug_prompt = f"""Based on the following context from PDF books, answer the user's question:
+
+CONTEXT:
+{context}
+
+QUESTION: {query}
+
+INSTRUCTIONS:
+- Provide a helpful answer based on the context
+- Put citations at the END of sentences, not in the middle
+- Use the exact citation format provided in the context: [Book Title, page X]
+- Example: "Balance speed with quality. [Podcasting 100 Success Secrets, page 54]"
+- If the context doesn't contain relevant information, say so politely
+- Always cite your sources when making claims"""
+                
                 footer = f"\n\n⏱️ Response time: {response_time:.2f}s"
+                footer += f"\n\n🔍 DEBUG - Full prompt used:\n" + "="*60 + f"\n{debug_prompt}\n" + "="*60
                 return response + footer
             else:
                 # Fallback: return context

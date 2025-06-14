@@ -2,6 +2,29 @@
 
 ## Latest Updates
 
+### Enhanced Citation System Implementation
+**Status**: Implemented ✅  
+**Files**: `pdf_chat.py`, `pdf_library_processor.py`
+
+#### Citation Features Added:
+- **Source Citations**: Every chat response includes book titles and page numbers
+- **Real Page References**: Uses actual PDF page numbers (1, 2, 3... to end)
+- **Citation Format**: `[Book Title, page X]` at end of sentences
+- **Debug Mode**: Full prompt and context displayed after each response
+- **Enhanced Metadata**: Complete publishers, DOI/ISBN information in library display
+
+#### Citation Engine Implementation:
+```python
+# Context format with citations
+context_with_citations.append(f"{chunk} [{title}, page {page_ref}]")
+
+# LLM prompt instructions
+INSTRUCTIONS:
+- Put citations at the END of sentences, not in the middle
+- Use format: [Book Title, page X]
+- Example: "Balance speed with quality. [Podcasting 100 Success Secrets, page 54]"
+```
+
 ### Issue #6 - Token-Based Chunking Implementation
 **Status**: Implemented ✅  
 **Branch**: `feature/token-based-chunking`
@@ -18,6 +41,31 @@
 - **Better RAG performance** with predictable context size
 - **Reduced fragmentation** through intelligent sentence boundary detection
 - **Sliding window overlap** maintains context continuity
+
+### Performance Analysis - QR Generation Bottleneck
+**Status**: Analyzed and documented in Issue #5 ✅
+
+#### Key Findings:
+- **Primary bottleneck**: QR frame generation in memvid encoder (80%+ of processing time)
+- **Sequential processing**: `/memvid/encoder.py` processes 5,109 chunks one-by-one
+- **CPU-intensive**: Each QR code generation + PNG save is computationally expensive
+- **Parallelization opportunity**: 8-core CPU could achieve 6-7x speedup (24 min → 4 min)
+
+#### Bottleneck Location:
+```python
+# File: /memvid/encoder.py (lines 191-219)
+def _generate_qr_frames(self, temp_dir: Path, show_progress: bool = True):
+    for frame_num, chunk in chunks_iter:  # ← SEQUENTIAL BOTTLENECK
+        chunk_data = {"id": frame_num, "text": chunk, "frame": frame_num}
+        qr_image = encode_to_qr(json.dumps(chunk_data))  # CPU-intensive
+        frame_path = frames_dir / f"frame_{frame_num:06d}.png"
+        qr_image.save(frame_path)  # I/O operation
+```
+
+#### Recommended Solution:
+- **ProcessPoolExecutor** parallelization using all CPU cores
+- **Existing infrastructure**: memvid already imports ProcessPoolExecutor
+- **Implementation**: Fork memvid package and implement parallel QR generation
 
 ## Issue #2 Resolution - PyMuPDF Implementation
 

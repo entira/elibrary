@@ -213,10 +213,13 @@ class PDFLibraryProcessorV2:
                     page_text = page.get_text()
                     # Clean the extracted text to fix Issue #2 problems
                     cleaned_text = self.clean_extracted_text(page_text)
-                    page_texts[page_num + 1] = cleaned_text  # 1-based page numbering
+                    # Use actual PDF page numbers (0-based index + 1 = real page number)
+                    actual_page_num = page_num + 1
+                    page_texts[actual_page_num] = cleaned_text
                 except Exception as e:
-                    print(f"Error extracting text from page {page_num + 1}: {e}")
-                    page_texts[page_num + 1] = ""
+                    actual_page_num = page_num + 1
+                    print(f"Error extracting text from page {actual_page_num}: {e}")
+                    page_texts[actual_page_num] = ""
             
             doc.close()
             return page_texts, num_pages
@@ -448,9 +451,9 @@ class PDFLibraryProcessorV2:
                     index_data = json.load(f)
                 
                 # Enhance chunks with our metadata
-                if 'chunks' in index_data and len(index_data['chunks']) == len(self.encoder._enhanced_metadata):
-                    for i, chunk in enumerate(index_data['chunks']):
-                        chunk['metadata'] = self.encoder._enhanced_metadata[i]
+                if 'metadata' in index_data and len(index_data['metadata']) == len(self.encoder._enhanced_metadata):
+                    for i, chunk in enumerate(index_data['metadata']):
+                        chunk['enhanced_metadata'] = self.encoder._enhanced_metadata[i]
                 
                 # Add summary statistics
                 index_data['enhanced_stats'] = self._calculate_enhanced_stats()
