@@ -1,5 +1,24 @@
 # PDF Library Processing - Claude AI Integration
 
+## Latest Updates
+
+### Issue #6 - Token-Based Chunking Implementation
+**Status**: Implemented ✅  
+**Branch**: `feature/token-based-chunking`
+
+#### Changes Made:
+- **Replaced character-based chunking** with token-based sliding window
+- **Chunk size**: 500 tokens (vs previous 1200 chars)
+- **Overlap**: 15% (75 tokens) using sliding window technique
+- **Added tiktoken integration** for GPT-4 compatible tokenization
+- **Semantic boundary detection** prevents fragmented sentences
+
+#### Benefits:
+- **Consistent token counts** across all chunks (exactly 500 tokens)
+- **Better RAG performance** with predictable context size
+- **Reduced fragmentation** through intelligent sentence boundary detection
+- **Sliding window overlap** maintains context continuity
+
 ## Issue #2 Resolution - PyMuPDF Implementation
 
 ### Problem Solved

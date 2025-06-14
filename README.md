@@ -7,11 +7,13 @@ Advanced PDF processing system that converts document libraries into searchable 
 Two-version processing pipeline with enhanced metadata extraction and cross-page context preservation:
 
 - **V1 Processor**: Basic PDF chunking (512 chars, ~480 avg length)
-- **V2 Processor**: Enhanced chunking (400 chars, ~362 avg length) with detailed page metadata
+- **V2 Processor**: Token-based sliding window chunking (500 tokens, 15% overlap) with detailed page metadata
 
 ## 🎯 Features
 
 - **High-Quality PDF Processing**: PyMuPDF-based extraction that eliminates encoding issues
+- **Token-Based Chunking**: 500-token sliding window chunks with 15% overlap for optimal RAG performance
+- **Semantic Boundary Preservation**: Intelligent sentence boundary detection prevents fragmented chunks
 - **Issue #2 Resolution**: Fixes "Gener ative AI", null bytes, and split word problems
 - **AI Metadata Extraction**: Ollama-powered extraction of titles, authors, publishers, years
 - **Video-based Indexing**: QR-encoded text chunks in video frames for efficient storage
@@ -36,6 +38,7 @@ memvid
 pymupdf
 requests
 tqdm
+tiktoken
 ```
 
 ## 🏗️ Architektúra
@@ -55,14 +58,16 @@ tqdm
   - Chunk size: 512 characters, Overlap: 50 characters
   - Output: 8,975 segments, ~482 chars average
 
-#### 3. **PDFLibraryProcessorV2 (Enhanced with PyMuPDF)**
-- **Advanced processing** with high-quality text extraction and detailed page metadata
+#### 3. **PDFLibraryProcessorV2 (Enhanced with Token-Based Chunking)**
+- **Advanced processing** with high-quality text extraction and intelligent chunking
 - **PyMuPDF Integration**: Eliminates encoding issues that caused Issue #2 problems
+- **Token-Based Sliding Window**: Consistent 500-token chunks with 15% overlap
 - **Configuration**:
   - Input folder: `./pdf_books`
   - Output folder: `./memvid_out_v2`
-  - Chunk size: 400 characters, Overlap: 50 characters
-  - Output: 14,486 segments, ~362 chars average
+  - Chunk size: 500 tokens (~2000 characters)
+  - Overlap: 75 tokens (15%)
+  - Method: Sliding window with semantic boundary detection
   - Features: Cross-page chunks, detailed page references, automatic text cleaning
 
 ### Workflow
@@ -71,13 +76,15 @@ tqdm
 graph TD
     A[PDF súbory] --> B[PyMuPDF extrakcia textu]
     B --> C[Text cleaning - Issue #2 fix]
-    C --> D[Chunking ~100 slov]
-    D --> E[Prvých 10 chunks]
-    E --> F[Ollama mistral:latest]
-    F --> G[JSON metadáta]
-    G --> H[Memvid encoder]
-    H --> I[QR frames generovanie]
-    I --> J[Video + Index]
+    C --> D[Token-based chunking - 500 tokens]
+    D --> E[Sliding window overlap - 15%]
+    E --> F[Semantic boundary cleaning]
+    F --> G[Prvých 10 chunks pre metadata]
+    G --> H[Ollama mistral:latest]
+    H --> I[JSON metadáta]
+    I --> J[Memvid encoder]
+    J --> K[QR frames generovanie]
+    K --> L[Video + Index]
 ```
 
 ## 🔧 Funkcionalita

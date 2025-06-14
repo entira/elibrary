@@ -1,0 +1,171 @@
+COMPREHENSIVE PDF EXTRACTION METHOD ANALYSIS
+============================================================
+
+This report analyzes PyPDF2, Docling, and PyMuPDF for solving Issue #2
+Issue #2: PDF text extraction encoding errors affecting RAG quality
+
+📊 OVERALL STATISTICS
+------------------------------
+
+PYPDF2:
+  PDFs processed: 7
+  Total issues: 23925
+  Issue #2 problems: 17
+  Total characters: 3,947,679
+  Issues per PDF: 3417.9
+
+DOCLING:
+  PDFs processed: 4
+  Total issues: 8487
+  Issue #2 problems: 0
+  Total characters: 2,113,830
+  Issues per PDF: 2121.8
+
+PYMUPDF:
+  PDFs processed: 3
+  Total issues: 7757
+  Issue #2 problems: 0
+  Total characters: 1,691,533
+  Issues per PDF: 2585.7
+
+🏆 RANKINGS
+--------------------
+
+Total Issues (lower=better):
+  1. PYMUPDF: 7757
+  2. DOCLING: 8487
+  3. PYPDF2: 23925
+
+Issue #2 Problems (lower=better):
+  1. DOCLING: 0
+  2. PYMUPDF: 0
+  3. PYPDF2: 17
+
+📚 PER-PDF DETAILED BREAKDOWN
+----------------------------------------
+
+📖 Building Data-Driven Applications with LlamaIndex_ A -- Andrei Gheorghiu; -- 2024 -- Packt -- 9781835089507 -- 3aec550a28a472fe765196a879abfe7f -- Anna’s Archive
+  PYPDF2:
+    Total issues: 5446
+    Issue #2 problems: 0
+    Split words: 2256
+    Null bytes: 0
+    Extra spaces: 3190
+    Characters: 751,674
+    Sample: Raw PDF extraction from: Building Data-Driven Applications with LlamaIndex_ A -- Andrei Gheorghiu; -...
+
+📖 LangChain and LlamaIndex Projects Lab Book_ Hooking Large -- Mark Watson -- 2024 -- Leanpub -- 72798ac862a4a0b5fa655a0ac818181b -- Anna’s Archive
+  PYPDF2:
+    Total issues: 233
+    Issue #2 problems: 0
+    Split words: 233
+    Null bytes: 0
+    Extra spaces: 0
+    Characters: 128,196
+    Sample: Raw PDF extraction from: LangChain and LlamaIndex Projects Lab Book_ Hooking Large -- Mark Watson --...
+  DOCLING:
+    Total issues: 262
+    Issue #2 problems: 0
+    Split words: 262
+    Null bytes: 0
+    Extra spaces: 0
+    Characters: 126,392
+    Sample: Raw Docling extraction from: LangChain and LlamaIndex Projects Lab Book_ Hooking Large -- Mark Watso...
+  PYMUPDF:
+    Total issues: 449
+    Issue #2 problems: 0
+    Split words: 449
+    Null bytes: 0
+    Extra spaces: 0
+    Characters: 131,937
+    Sample: Raw PYMUPDF extraction from: LangChain and LlamaIndex Projects Lab Book_ Hooking Large -- Mark Watso...
+
+📖 Podcasting 100 Success Secrets - Start your Podcast Today_ -- John Hall -- Place of publication not identified, 2008 -- Emereo Pty Ltd -- 9781921523946 -- f3a3993989416bef87c96aa5aee87262 -- Anna’s Archive
+  PYPDF2:
+    Total issues: 751
+    Issue #2 problems: 0
+    Split words: 750
+    Null bytes: 0
+    Extra spaces: 1
+    Characters: 200,763
+    Sample: Raw PDF extraction from: Podcasting 100 Success Secrets - Start your Podcast Today_ -- John Hall -- ...
+
+📖 Podcasting for dummies -- Tee Morris; Chuck Tomasi; Evo Terra -- 2nd ed, 2008 -- Wiley -- 9780470275573 -- 20a76564f9f3b9350db1b08c264b0fdd -- Anna’s Archive
+  PYPDF2:
+    Total issues: 5519
+    Issue #2 problems: 0
+    Split words: 3192
+    Null bytes: 0
+    Extra spaces: 2327
+    Characters: 827,494
+    Sample: Raw PDF extraction from: Podcasting for dummies -- Tee Morris; Chuck Tomasi; Evo Terra -- 2nd ed, 20...
+
+📖 Profitable Podcasting_ Grow Your Business, Expand Your -- Stephen Woessner -- BusinessPro collection, Lieu de publication non identifié, -- AMACOM -- 9780814438282 -- d1f8c614a398d21072ef0be1eba7857c -- Anna’s Archive
+  PYPDF2:
+    Total issues: 1569
+    Issue #2 problems: 0
+    Split words: 1568
+    Null bytes: 0
+    Extra spaces: 1
+    Characters: 445,528
+    Sample: Raw PDF extraction from: Profitable Podcasting_ Grow Your Business, Expand Your -- Stephen Woessner ...
+  DOCLING:
+    Total issues: 1850
+    Issue #2 problems: 0
+    Split words: 1850
+    Null bytes: 0
+    Extra spaces: 0
+    Characters: 430,012
+    Sample: Raw Docling extraction from: Profitable Podcasting_ Grow Your Business, Expand Your -- Stephen Woess...
+
+📖 RAG-Driven Generative AI_ Build Custom Retrieval Augmented -- Denis Rothman -- 2024 -- Packt Publishing Ltd -- 9781836200901 -- 4200fd9730727b48a7ada8aed0de7a8b -- Anna’s Archive
+  PYPDF2:
+    Total issues: 5526
+    Issue #2 problems: 17
+    Split words: 3547
+    Null bytes: 132
+    Extra spaces: 1830
+    Characters: 552,122
+    Sample: Raw PDF extraction from: RAG-Driven Generative AI_ Build Custom Retrieval Augmented -- Denis Rothman...
+  DOCLING:
+    Total issues: 1903
+    Issue #2 problems: 0
+    Split words: 1448
+    Null bytes: 0
+    Extra spaces: 455
+    Characters: 542,681
+    Sample: Raw Docling extraction from: RAG-Driven Generative AI_ Build Custom Retrieval Augmented -- Denis Rot...
+  PYMUPDF:
+    Total issues: 2816
+    Issue #2 problems: 0
+    Split words: 1478
+    Null bytes: 0
+    Extra spaces: 1338
+    Characters: 533,277
+    Sample: Raw PYMUPDF extraction from: RAG-Driven Generative AI_ Build Custom Retrieval Augmented -- Denis Rot...
+
+📖 The new rules of marketing & PR _ how to use content -- David Meerman Scott -- Eighth, 2022 -- Wiley -- 9781119854289 -- ff06f5596a05db0032ddd6dd8f79e336 -- Anna’s Archive
+  PYPDF2:
+    Total issues: 4881
+    Issue #2 problems: 0
+    Split words: 4654
+    Null bytes: 0
+    Extra spaces: 227
+    Characters: 1,041,902
+    Sample: Raw PDF extraction from: The new rules of marketing & PR _ how to use content -- David Meerman Scott...
+  DOCLING:
+    Total issues: 4472
+    Issue #2 problems: 0
+    Split words: 4472
+    Null bytes: 0
+    Extra spaces: 0
+    Characters: 1,014,745
+    Sample: Raw Docling extraction from: The new rules of marketing & PR _ how to use content -- David Meerman S...
+  PYMUPDF:
+    Total issues: 4492
+    Issue #2 problems: 0
+    Split words: 4423
+    Null bytes: 0
+    Extra spaces: 69
+    Characters: 1,026,319
+    Sample: Raw PYMUPDF extraction from: The new rules of marketing & PR _ how to use content -- David Meerman S...

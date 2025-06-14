@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import pymupdf as fitz
 from tqdm import tqdm
 from memvid import MemvidEncoder
+import tiktoken
 
 
 class OllamaEmbedder:
@@ -96,9 +97,13 @@ class PDFLibraryProcessorV2:
         self.embedder = OllamaEmbedder()
         self.encoder = MemvidEncoder()
         
-        # Chunk configuration - optimized for RAG performance
-        self.chunk_size = 1200  # Target characters per chunk (increased for better RAG context)
-        self.overlap = 100      # Character overlap between chunks (proportionally increased)
+        # Initialize tokenizer for token-based chunking
+        self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
+        
+        # Chunk configuration - token-based sliding window
+        self.chunk_size_tokens = 500    # Target tokens per chunk (optimal for RAG)
+        self.overlap_percentage = 0.15  # 15% overlap between chunks
+        self.overlap_tokens = int(self.chunk_size_tokens * self.overlap_percentage)  # 75 tokens
         
     def extract_metadata_with_ollama(self, sample_text: str) -> Dict[str, str]:
         """Extract metadata using Ollama mistral:latest model."""
@@ -260,36 +265,77 @@ class PDFLibraryProcessorV2:
         return chunks
     
     def _split_text_into_chunks(self, text: str) -> List[str]:
-        """Split text into chunks with overlap."""
+        """Split text into token-based chunks with sliding window overlap."""
         if not text.strip():
             return []
         
-        chunks = []
-        start = 0
+        # Tokenize the entire text
+        tokens = self.tokenizer.encode(text)
         
-        while start < len(text):
-            # Find end position
-            end = start + self.chunk_size
+        if len(tokens) <= self.chunk_size_tokens:
+            # Text is smaller than chunk size, return as single chunk
+            return [text]
+        
+        chunks = []
+        start_token = 0
+        
+        while start_token < len(tokens):
+            # Calculate end position for this chunk
+            end_token = min(start_token + self.chunk_size_tokens, len(tokens))
             
-            # If we're not at the end, try to break at word boundary
-            if end < len(text):
-                # Look for word boundary within last 50 characters
-                word_boundary = text.rfind(' ', max(start, end - 50), end)
-                if word_boundary > start:
-                    end = word_boundary
+            # Extract token slice for this chunk
+            chunk_tokens = tokens[start_token:end_token]
             
-            chunk = text[start:end].strip()
-            if chunk:
-                chunks.append(chunk)
+            # Decode tokens back to text
+            chunk_text = self.tokenizer.decode(chunk_tokens)
             
-            # Move start position with overlap
-            start = max(start + 1, end - self.overlap)
+            # Clean up the chunk text
+            chunk_text = self._clean_chunk_boundaries(chunk_text)
             
-            # Prevent infinite loop
-            if start >= len(text):
+            if chunk_text.strip():
+                chunks.append(chunk_text)
+            
+            # Move start position with overlap (sliding window)
+            # If this is the last chunk, break to avoid empty chunks
+            if end_token >= len(tokens):
                 break
+                
+            start_token = end_token - self.overlap_tokens
+            
+            # Safety check to prevent infinite loops
+            if start_token < 0:
+                start_token = end_token
         
         return chunks
+    
+    def _clean_chunk_boundaries(self, text: str) -> str:
+        """Clean chunk boundaries to improve readability and semantic coherence."""
+        if not text.strip():
+            return ""
+        
+        # Remove leading/trailing whitespace
+        text = text.strip()
+        
+        # If chunk starts mid-sentence, try to find sentence beginning
+        if text and not text[0].isupper() and text[0] not in '.!?':
+            # Look for sentence start within first 100 characters
+            sentences = re.split(r'[.!?]\s+', text)
+            if len(sentences) > 1:
+                # Remove the incomplete first sentence
+                text = '. '.join(sentences[1:])
+                if text.startswith('. '):
+                    text = text[2:]
+        
+        # If chunk ends mid-sentence, try to complete the sentence
+        if text and text[-1] not in '.!?':
+            # Look for sentence end within last 100 characters
+            sentence_end = re.search(r'[.!?]\s', text[-100:])
+            if sentence_end:
+                # Keep text up to the sentence end
+                cut_point = len(text) - 100 + sentence_end.end() - 1
+                text = text[:cut_point]
+        
+        return text.strip()
     
     def _create_cross_page_chunks(self, page_texts: Dict[int, str], 
                                 sorted_pages: List[int]) -> List[EnhancedChunk]:
@@ -479,7 +525,9 @@ class PDFLibraryProcessorV2:
         
         print(f"Found {len(pdf_files)} PDF files to process")
         print(f"Output directory: {self.output_dir}")
-        print(f"Chunk size: {self.chunk_size} chars, Overlap: {self.overlap} chars (optimized for RAG)")
+        print(f"Chunk size: {self.chunk_size_tokens} tokens (~{self.chunk_size_tokens * 4} chars)")
+        print(f"Overlap: {self.overlap_tokens} tokens ({self.overlap_percentage*100:.0f}%)")
+        print(f"Chunking method: Token-based sliding window")
         print()
         
         processed_count = 0
