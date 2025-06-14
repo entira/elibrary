@@ -10,7 +10,7 @@ import re
 import requests
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
-import PyPDF2
+import pymupdf as fitz
 from tqdm import tqdm
 from memvid import MemvidEncoder
 
@@ -194,25 +194,27 @@ class PDFLibraryProcessorV2:
         return text.strip()
     
     def extract_text_with_pages(self, pdf_path: Path) -> Tuple[Dict[int, str], int]:
-        """Extract text from PDF with page-by-page mapping."""
+        """Extract text from PDF with page-by-page mapping using PyMuPDF."""
         try:
-            with open(pdf_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                num_pages = len(pdf_reader.pages)
-                
-                page_texts = {}
-                
-                for page_num, page in enumerate(pdf_reader.pages, 1):
-                    try:
-                        page_text = page.extract_text()
-                        # Clean extracted text to fix encoding issues
-                        cleaned_text = self.clean_extracted_text(page_text)
-                        page_texts[page_num] = cleaned_text
-                    except Exception as e:
-                        print(f"Error extracting text from page {page_num}: {e}")
-                        page_texts[page_num] = ""
-                
-                return page_texts, num_pages
+            # Open PDF with PyMuPDF
+            doc = fitz.open(pdf_path)
+            num_pages = len(doc)
+            page_texts = {}
+            
+            for page_num in range(num_pages):
+                try:
+                    page = doc[page_num]
+                    # Extract text from page
+                    page_text = page.get_text()
+                    # Clean the extracted text to fix Issue #2 problems
+                    cleaned_text = self.clean_extracted_text(page_text)
+                    page_texts[page_num + 1] = cleaned_text  # 1-based page numbering
+                except Exception as e:
+                    print(f"Error extracting text from page {page_num + 1}: {e}")
+                    page_texts[page_num + 1] = ""
+            
+            doc.close()
+            return page_texts, num_pages
                 
         except Exception as e:
             print(f"Error reading PDF {pdf_path}: {e}")

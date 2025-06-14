@@ -11,7 +11,8 @@ Two-version processing pipeline with enhanced metadata extraction and cross-page
 
 ## 🎯 Features
 
-- **Enhanced PDF Processing**: Two-tier processing system (V1 basic, V2 enhanced)
+- **High-Quality PDF Processing**: PyMuPDF-based extraction that eliminates encoding issues
+- **Issue #2 Resolution**: Fixes "Gener ative AI", null bytes, and split word problems
 - **AI Metadata Extraction**: Ollama-powered extraction of titles, authors, publishers, years
 - **Video-based Indexing**: QR-encoded text chunks in video frames for efficient storage
 - **Cross-page Context**: Enhanced V2 processor preserves context between pages
@@ -32,7 +33,7 @@ pip install -r requirements.txt
 
 ```txt
 memvid
-PyPDF2
+pymupdf
 requests
 tqdm
 ```
@@ -54,27 +55,29 @@ tqdm
   - Chunk size: 512 characters, Overlap: 50 characters
   - Output: 8,975 segments, ~482 chars average
 
-#### 3. **PDFLibraryProcessorV2 (Enhanced)**
-- **Advanced processing** with detailed page metadata
+#### 3. **PDFLibraryProcessorV2 (Enhanced with PyMuPDF)**
+- **Advanced processing** with high-quality text extraction and detailed page metadata
+- **PyMuPDF Integration**: Eliminates encoding issues that caused Issue #2 problems
 - **Configuration**:
   - Input folder: `./pdf_books`
   - Output folder: `./memvid_out_v2`
   - Chunk size: 400 characters, Overlap: 50 characters
   - Output: 14,486 segments, ~362 chars average
-  - Features: Cross-page chunks, detailed page references
+  - Features: Cross-page chunks, detailed page references, automatic text cleaning
 
 ### Workflow
 
 ```mermaid
 graph TD
-    A[PDF súbory] --> B[Extrakcia textu]
-    B --> C[Chunking ~100 slov]
-    C --> D[Prvých 10 chunks]
-    D --> E[Ollama mistral:latest]
-    E --> F[JSON metadáta]
-    F --> G[Memvid encoder]
-    G --> H[QR frames generovanie]
-    H --> I[Video + Index]
+    A[PDF súbory] --> B[PyMuPDF extrakcia textu]
+    B --> C[Text cleaning - Issue #2 fix]
+    C --> D[Chunking ~100 slov]
+    D --> E[Prvých 10 chunks]
+    E --> F[Ollama mistral:latest]
+    F --> G[JSON metadáta]
+    G --> H[Memvid encoder]
+    H --> I[QR frames generovanie]
+    I --> J[Video + Index]
 ```
 
 ## 🔧 Funkcionalita

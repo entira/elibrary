@@ -1,4 +1,4 @@
 memvid
-PyPDF2
+pymupdf
 requests
 tqdm
