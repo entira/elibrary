@@ -127,9 +127,8 @@ class PDFLibraryChatV2:
         
         for dir_path in possible_dirs:
             if os.path.exists(dir_path):
-                # Check for different library file patterns
+                # Check for library files
                 patterns = [
-                    ("library.mp4", "library_index.json"),
                     ("library.mp4", "library_index.json")
                 ]
                 
