@@ -24,6 +24,8 @@ from typing import List, Dict, Any, Optional, Tuple
 import pymupdf as fitz
 from tqdm import tqdm
 from memvid import MemvidEncoder
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import cpu_count
 import tiktoken
 
 
@@ -63,6 +65,132 @@ class OllamaEmbedder:
                 embeddings.append([0.0] * 768)  # Default embedding size
         
         return embeddings
+
+
+class ParallelMemvidEncoder(MemvidEncoder):
+    """MemvidEncoder with parallel QR generation capability."""
+    
+    def __init__(self, n_workers: int = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.n_workers = n_workers or cpu_count()
+        
+    def build_video_parallel(self, output_file: str, index_file: str, **kwargs) -> Dict[str, Any]:
+        """Build video with parallel QR generation."""
+        import tempfile
+        import shutil
+        from pathlib import Path
+        import json
+        import cv2
+        import qrcode
+        from PIL import Image
+        import numpy as np
+        
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                frames_dir = temp_path / "frames"
+                frames_dir.mkdir()
+                
+                print(f"🚀 Generating {len(self.chunks)} QR frames using {self.n_workers} workers...")
+                
+                # Generate QR frames in parallel
+                self._generate_qr_frames_parallel(frames_dir)
+                
+                # Build video from frames (sequential, but fast)
+                self._build_video_from_frames(frames_dir, output_file, **kwargs)
+                
+                # Create index file
+                self._create_index_file(index_file)
+                
+                return {"status": "success", "frames": len(self.chunks)}
+                
+        except Exception as e:
+            print(f"Error in parallel video generation: {e}")
+            # Fallback to original method
+            return super().build_video(output_file, index_file, **kwargs)
+    
+    def _generate_qr_frames_parallel(self, frames_dir: Path):
+        """Generate QR frames in parallel using ProcessPoolExecutor."""
+        
+        def generate_single_qr(args):
+            frame_num, chunk_text, frames_dir_str = args
+            try:
+                import qrcode
+                from PIL import Image
+                import json
+                import os
+                
+                chunk_data = {"id": frame_num, "text": chunk_text, "frame": frame_num}
+                
+                # Create QR code
+                qr = qrcode.QRCode(version=35, error_correction=qrcode.constants.ERROR_CORRECT_M, 
+                                 box_size=5, border=3)
+                qr.add_data(json.dumps(chunk_data))
+                qr.make(fit=True)
+                
+                # Create QR image
+                qr_image = qr.make_image(fill_color="black", back_color="white")
+                
+                # Save frame
+                frame_path = os.path.join(frames_dir_str, f"frame_{frame_num:06d}.png")
+                qr_image.save(frame_path)
+                
+                return frame_num
+            except Exception as e:
+                print(f"Error generating QR frame {frame_num}: {e}")
+                return None
+        
+        # Prepare data for parallel processing
+        chunk_tasks = [(i, chunk, str(frames_dir)) for i, chunk in enumerate(self.chunks)]
+        
+        # Generate QR frames in parallel
+        with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
+            list(tqdm(executor.map(generate_single_qr, chunk_tasks), 
+                     total=len(chunk_tasks), desc="Generating QR frames"))
+    
+    def _build_video_from_frames(self, frames_dir: Path, output_file: str, codec: str = 'h265', **kwargs):
+        """Build video from generated frames."""
+        import cv2
+        import numpy as np
+        
+        frame_files = sorted(frames_dir.glob("frame_*.png"))
+        if not frame_files:
+            raise ValueError("No QR frames generated")
+        
+        # Read first frame to get dimensions
+        first_frame = cv2.imread(str(frame_files[0]))
+        height, width, _ = first_frame.shape
+        
+        # Setup video writer
+        if codec == 'h265':
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        else:
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            
+        out = cv2.VideoWriter(output_file, fourcc, 1.0, (width, height))
+        
+        print(f"🎥 Building video from {len(frame_files)} frames...")
+        for frame_file in tqdm(frame_files, desc="Building video"):
+            frame = cv2.imread(str(frame_file))
+            out.write(frame)
+        
+        out.release()
+    
+    def _create_index_file(self, index_file: str):
+        """Create index file with metadata."""
+        metadata = []
+        for i, chunk in enumerate(self.chunks):
+            metadata.append({
+                "id": i,
+                "text": chunk,
+                "frame": i,
+                "length": len(chunk)
+            })
+        
+        index_data = {"metadata": metadata}
+        
+        with open(index_file, 'w', encoding='utf-8') as f:
+            json.dump(index_data, f, indent=2, ensure_ascii=False)
 
 
 class EnhancedChunk:
@@ -125,22 +253,19 @@ class PDFLibraryProcessorV2:
             }
         }
         
-        # Suppress MemvidEncoder LLM warnings during initialization
+        # Initialize our custom parallel encoder
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             try:
-                # Try the documented n_workers parameter first
-                self.encoder = MemvidEncoder(n_workers=encoder_workers)
-                print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers (n_workers parameter)")
-            except TypeError:
-                try:
-                    # Try config approach
-                    self.encoder = MemvidEncoder(config=config)
-                    print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers (config parameter)")
-                except Exception:
-                    # Final fallback to default
-                    self.encoder = MemvidEncoder()
-                    print(f"🔧 MemvidEncoder initialized with default configuration (no parallel support)")
+                # Use our custom ParallelMemvidEncoder for true parallel QR generation
+                self.encoder = ParallelMemvidEncoder(n_workers=encoder_workers)
+                print(f"🚀 ParallelMemvidEncoder initialized with {encoder_workers} workers for parallel QR generation")
+                self.use_parallel_encoding = True
+            except Exception as e:
+                # Fallback to standard MemvidEncoder
+                self.encoder = MemvidEncoder()
+                print(f"⚠️ Fallback to standard MemvidEncoder: {e}")
+                self.use_parallel_encoding = False
         
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
@@ -483,9 +608,14 @@ class PDFLibraryProcessorV2:
     def create_enhanced_index(self, video_path: str, index_path: str):
         """Create enhanced index with detailed metadata."""
         try:
-            # Build basic video
+            # Build video using parallel encoding if available
             print("Building video...")
-            self.encoder.build_video(video_path, index_path)
+            if self.use_parallel_encoding and hasattr(self.encoder, 'build_video_parallel'):
+                print("🚀 Using parallel QR generation...")
+                result = self.encoder.build_video_parallel(video_path, index_path)
+            else:
+                print("🔧 Using standard video generation...")
+                result = self.encoder.build_video(video_path, index_path)
             
             # Enhance the index with our metadata
             if hasattr(self.encoder, '_enhanced_metadata'):

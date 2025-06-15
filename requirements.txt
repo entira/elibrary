@@ -3,3 +3,5 @@ pymupdf
 requests
 tqdm
 tiktoken
+qrcode[pil]
+opencv-python
