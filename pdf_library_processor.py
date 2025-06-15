@@ -104,29 +104,43 @@ class PDFLibraryProcessorV2:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         
+        # Set environment variables for parallel processing
+        from multiprocessing import cpu_count
+        encoder_workers = n_workers if n_workers else cpu_count()
+        os.environ['MEMVID_WORKERS'] = str(encoder_workers)
+        os.environ['OMP_NUM_THREADS'] = str(encoder_workers)
+        
         # Initialize embedder and encoder with parallel processing
         self.embedder = OllamaEmbedder()
         # Configure MemvidEncoder for parallel QR generation
-        from multiprocessing import cpu_count
-        encoder_workers = n_workers if n_workers else cpu_count()
         
         # Configure memvid for parallel processing
         config = {
-            'n_workers': encoder_workers,
-            'parallel_processing': True
+            'retrieval': {
+                'max_workers': encoder_workers
+            },
+            'performance': {
+                'parallel_qr_generation': True,
+                'qr_workers': encoder_workers
+            }
         }
         
         # Suppress MemvidEncoder LLM warnings during initialization
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             try:
-                self.encoder = MemvidEncoder(config=config)
-                print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers for parallel QR generation")
-            except Exception as e:
-                # Fallback to default initialization if config not supported
-                self.encoder = MemvidEncoder()
-                print(f"⚠️ MemvidEncoder initialized without parallel config (fallback): {e}")
-                print(f"🔧 Using default MemvidEncoder configuration")
+                # Try the documented n_workers parameter first
+                self.encoder = MemvidEncoder(n_workers=encoder_workers)
+                print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers (n_workers parameter)")
+            except TypeError:
+                try:
+                    # Try config approach
+                    self.encoder = MemvidEncoder(config=config)
+                    print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers (config parameter)")
+                except Exception:
+                    # Final fallback to default
+                    self.encoder = MemvidEncoder()
+                    print(f"🔧 MemvidEncoder initialized with default configuration (no parallel support)")
         
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
@@ -598,6 +612,12 @@ class PDFLibraryProcessorV2:
 def main():
     """Main entry point."""
     import argparse
+    
+    # Suppress all LLM-related warnings at startup
+    warnings.filterwarnings("ignore", message=".*OpenAI library not available.*")
+    warnings.filterwarnings("ignore", message=".*Google Generative AI library not available.*")
+    warnings.filterwarnings("ignore", message=".*Anthropic library not available.*")
+    warnings.filterwarnings("ignore", message=".*LLM client.*")
     
     parser = argparse.ArgumentParser(description='PDF Library Processor V2 with Parallel QR Generation')
     parser.add_argument('--max-workers', type=int, default=None,
