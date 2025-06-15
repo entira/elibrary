@@ -473,6 +473,7 @@ class PDFLibraryChat:
                         break
                 
                 # Put citation at the end for cleaner LLM processing
+                # Note: Page references are approximate due to PDF chunking across pages
                 context_with_citations.append(f"{chunk} {citation}")
             
             return context_with_citations
@@ -559,6 +560,7 @@ INSTRUCTIONS:
         print("   - Use 'search' to see raw search results")
         print("   - Questions can be about specific topics, authors, or concepts")
         print("   - The system uses semantic search across all PDF content")
+        print("   - Page references are approximate due to chunking across page boundaries")
     
     def run_chat(self):
         """Run the interactive chat loop."""
