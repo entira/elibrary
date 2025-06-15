@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-PDF Library Processor v2 with Enhanced Page Metadata
-Processes PDF books with detailed page tracking for each chunk.
+PDF Library Processor v2 with Enhanced Page Metadata and Smart Page Numbering
+Processes PDF books with detailed page tracking for each chunk, featuring:
+- Smart page number detection for accurate citations
+- Handles PDF page offsets (front matter, unnumbered pages)
+- Pattern-based page number extraction from content
+- Fallback to estimated page numbers based on content analysis
 """
 
 import os
@@ -198,6 +202,81 @@ class PDFLibraryProcessorV2:
         
         return text.strip()
     
+    def extract_printed_page_number(self, page_text: str, pdf_page_num: int, file_name: str = "") -> int:
+        """Extract actual printed page number from page content with smart detection."""
+        if not page_text.strip():
+            return pdf_page_num  # Fallback to PDF page number
+        
+        # Common page number patterns (prioritized by reliability)
+        patterns = [
+            r'^\s*(\d+)\s*$',                    # Page number alone on a line
+            r'^-\s*(\d+)\s*-$',                  # "-123-" format
+            r'^\s*(\d+)\s*\n',                   # Page number at start of page
+            r'\n\s*(\d+)\s*$',                   # Page number at end of page
+            r'Page\s+(\d+)',                     # "Page 123"
+            r'^\s*(\d+)\s*\|\s*',                # Page number with separator
+            r'\|\s*(\d+)\s*$',                   # Page number after separator
+        ]
+        
+        # Look for page numbers in the text
+        found_pages = []
+        for pattern in patterns:
+            matches = re.finditer(pattern, page_text, re.MULTILINE | re.IGNORECASE)
+            for match in matches:
+                page_num = int(match.group(1))
+                # Reasonable page number range (1-9999)
+                if 1 <= page_num <= 9999:
+                    found_pages.append(page_num)
+        
+        if found_pages:
+            # Use the most common page number found (in case of multiple matches)
+            from collections import Counter
+            most_common = Counter(found_pages).most_common(1)[0][0]
+            return most_common
+        
+        # Fallback: Apply known PDF-specific offsets
+        offset = self._get_pdf_page_offset(file_name, page_text, pdf_page_num)
+        estimated_page = max(1, pdf_page_num - offset)
+        
+        return estimated_page
+    
+    def _get_pdf_page_offset(self, file_name: str, page_text: str, pdf_page_num: int) -> int:
+        """Get page offset for specific PDFs based on content analysis."""
+        
+        # Known PDF offsets (can be expanded)
+        known_offsets = {
+            "Podcasting For Dummies": 20,
+            "RAG-Driven Generative AI": 5,
+        }
+        
+        # Check if filename matches known patterns
+        for pdf_name, offset in known_offsets.items():
+            if pdf_name.lower() in file_name.lower():
+                return offset
+        
+        # Dynamic offset detection based on content patterns
+        if pdf_page_num <= 30:  # Only check early pages for offset detection
+            # Look for indicators of front matter
+            front_matter_indicators = [
+                'table of contents', 'copyright', 'acknowledgment', 'preface', 
+                'introduction', 'foreword', 'dedication', 'about the author',
+                'about this book', 'publisher', 'isbn', 'published by'
+            ]
+            
+            text_lower = page_text.lower()
+            for indicator in front_matter_indicators:
+                if indicator in text_lower:
+                    # Estimate offset based on page position and content
+                    if pdf_page_num <= 5:
+                        return 15  # Typical offset for title/copyright pages
+                    elif pdf_page_num <= 15:
+                        return 10  # TOC and front matter
+                    else:
+                        return 5   # Late front matter
+        
+        # Default: minimal offset
+        return 0
+    
     def extract_text_with_pages(self, pdf_path: Path) -> Tuple[Dict[int, str], int]:
         """Extract text from PDF with page-by-page mapping using PyMuPDF."""
         try:
@@ -213,10 +292,16 @@ class PDFLibraryProcessorV2:
                     page_text = page.get_text()
                     # Clean the extracted text to fix Issue #2 problems
                     cleaned_text = self.clean_extracted_text(page_text)
-                    # Use actual PDF page numbers (0-based index + 1 = real page number)
-                    actual_page_num = page_num + 1
+                    
+                    # Use smart page number detection for accurate citations
+                    pdf_page_num = page_num + 1  # Sequential PDF page number
+                    actual_page_num = self.extract_printed_page_number(
+                        cleaned_text, pdf_page_num, pdf_path.name
+                    )
+                    
                     page_texts[actual_page_num] = cleaned_text
                 except Exception as e:
+                    # Fallback to sequential numbering on error
                     actual_page_num = page_num + 1
                     print(f"Error extracting text from page {actual_page_num}: {e}")
                     page_texts[actual_page_num] = ""

@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """
-PDF Library Chat Interface V2 with Interactive Library Selection
+PDF Library Chat Interface V2 with Interactive Library Selection and Enhanced Metadata Display
 Interactive chat with PDF library video memory using local Ollama.
+
+Enhanced Features:
+- Improved authors field display (proper JSON array parsing)
+- Clean metadata formatting without syntax artifacts  
+- Accurate page references using smart page number detection
+- Complete publisher and DOI/ISBN information display
 """
 
 import os
 import sys
 import time
 import json
+import re
 import requests
 import termios
 import tty
@@ -320,6 +327,57 @@ class PDFLibraryChatV2:
             print(f"Error loading library stats: {e}")
             return {'total_books': 0, 'total_chunks': 0, 'books': {}}
     
+    def _clean_authors_field(self, authors_field) -> str:
+        """Clean authors field from JSON array format."""
+        if not authors_field or str(authors_field) == 'Unknown':
+            return 'Unknown'
+        
+        authors_str = str(authors_field)
+        
+        try:
+            # Try to parse as JSON array first
+            if authors_str.startswith('[') and authors_str.endswith(']'):
+                authors_list = json.loads(authors_str)
+                if isinstance(authors_list, list):
+                    return ', '.join(authors_list)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        # Fallback: manual cleaning for malformed JSON-like strings
+        cleaned = authors_str.strip("[]'\"")
+        # Handle patterns like "'Author1', 'Author2', 'Author3'"
+        cleaned = re.sub(r"',\s*'", ', ', cleaned)  # Replace ', ' with ', '
+        cleaned = re.sub(r"^'|'$", '', cleaned)     # Remove leading/trailing quotes
+        cleaned = re.sub(r'"\s*,\s*"', ', ', cleaned)  # Handle double quotes too
+        cleaned = re.sub(r'^"|"$', '', cleaned)     # Remove leading/trailing double quotes
+        
+        return cleaned if cleaned else 'Unknown'
+    
+    def _clean_metadata_field(self, field_value) -> str:
+        """Clean any metadata field from JSON array format."""
+        if not field_value or str(field_value) == 'Unknown':
+            return 'Unknown'
+        
+        field_str = str(field_value)
+        
+        try:
+            # Try to parse as JSON array first
+            if field_str.startswith('[') and field_str.endswith(']'):
+                field_list = json.loads(field_str)
+                if isinstance(field_list, list):
+                    return ', '.join(field_list)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        # Fallback: manual cleaning
+        cleaned = field_str.strip("[]'\"")
+        cleaned = re.sub(r"',\s*'", ', ', cleaned)
+        cleaned = re.sub(r"^'|'$", '', cleaned)
+        cleaned = re.sub(r'"\s*,\s*"', ', ', cleaned)
+        cleaned = re.sub(r'^"|"$', '', cleaned)
+        
+        return cleaned if cleaned else 'Unknown'
+    
     def show_library_info(self):
         """Display information about the PDF library."""
         stats = self.load_library_stats()
@@ -336,9 +394,9 @@ class PDFLibraryChatV2:
         for i, (file_key, info) in enumerate(stats['books'].items(), 1):
             # Display full title without truncation
             title = info['title']
-            # Remove list brackets and quotes from authors if present
-            authors = str(info['authors']).strip("[]'\"")
-            publishers = str(info['publishers']).strip("[]'\"") if info.get('publishers', 'Unknown') != 'Unknown' else 'Unknown'
+            # Clean authors field properly
+            authors = self._clean_authors_field(info['authors'])
+            publishers = self._clean_metadata_field(info.get('publishers', 'Unknown'))
             doi = info.get('doi', 'Unknown')
             
             print(f"   {i:2d}. {title}")
