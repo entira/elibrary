@@ -248,4 +248,29 @@ Future versions will support:
 
 ## License
 
-This project is open source. See LICENSE file for details.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+### Why AGPL-3.0?
+
+This license was chosen due to the inclusion of PyMuPDF, which requires AGPL-3.0 licensing. The AGPL-3.0 ensures:
+
+- ✅ **Open Source**: Source code must remain available
+- ✅ **Network Copyleft**: Modifications to network services must be shared
+- ✅ **Community Protection**: Prevents proprietary forks
+- ✅ **Commercial SaaS**: Can be used in commercial SaaS with source disclosure
+
+### What This Means
+
+- **✅ Personal Use**: Free to use for personal projects
+- **✅ Research & Education**: Perfect for academic and research use
+- **✅ Open Source Projects**: Can be included in other AGPL/GPL projects
+- **✅ Commercial SaaS**: Can be used commercially if source is provided
+- **❌ Proprietary Software**: Cannot be included in closed-source products
+
+### Dependencies
+
+All dependencies are compatible with AGPL-3.0:
+- memvid (MIT), requests (Apache 2.0), tiktoken (MIT), qrcode (MIT), opencv-python (Apache 2.0), tqdm (MIT/MPL-2.0)
+- PyMuPDF (AGPL-3.0) - requires this project to be AGPL-3.0
+
+See [LICENSE_ANALYSIS.md](LICENSE_ANALYSIS.md) for detailed licensing information and [NOTICE](NOTICE) for third-party attributions.

@@ -1,0 +1,90 @@
+# NOTICE
+
+This project includes software developed with the assistance of Claude Code by Anthropic.
+
+## Third-Party Software Licenses
+
+This software incorporates the following third-party libraries:
+
+### memvid
+- **License**: MIT License
+- **Copyright**: Olow304 and contributors
+- **Homepage**: https://github.com/Olow304/memvid
+- **Purpose**: Video-based AI memory library for storing text chunks in MP4 files
+
+### PyMuPDF
+- **License**: GNU Affero General Public License v3.0 (AGPL-3.0)
+- **Copyright**: Artifex Software, Inc.
+- **Homepage**: https://github.com/pymupdf/PyMuPDF
+- **Purpose**: High-performance PDF text extraction and processing
+- **Note**: This library requires the entire project to be licensed under AGPL-3.0
+
+### requests
+- **License**: Apache License 2.0
+- **Copyright**: Kenneth Reitz and contributors
+- **Homepage**: https://github.com/psf/requests
+- **Purpose**: HTTP library for Python
+
+### tqdm
+- **License**: MIT License / Mozilla Public License 2.0 (dual license)
+- **Copyright**: Casper da Costa-Luis and contributors
+- **Homepage**: https://github.com/tqdm/tqdm
+- **Purpose**: Progress bar library for Python
+
+### tiktoken
+- **License**: MIT License
+- **Copyright**: 2022 OpenAI, Shantanu Jain
+- **Homepage**: https://github.com/openai/tiktoken
+- **Purpose**: Fast BPE tokenizer for OpenAI models
+
+### qrcode
+- **License**: MIT License (wrapper) with Pillow dependency
+- **Copyright**: Lincoln Loop and contributors
+- **Homepage**: https://github.com/lincolnloop/python-qrcode
+- **Purpose**: QR code generation library
+
+### opencv-python
+- **License**: Apache License 2.0 (OpenCV 4.5.0+), MIT License (package wrapper)
+- **Copyright**: OpenCV team and contributors
+- **Homepage**: https://github.com/opencv/opencv-python
+- **Purpose**: Computer vision and image processing library
+- **Note**: Includes LGPL-licensed FFmpeg components
+
+## Development Tools
+
+### Claude Code
+- **Provider**: Anthropic
+- **Purpose**: AI-assisted code generation and development
+- **Usage**: Code generation, documentation, and development assistance
+- **Rights**: Generated code is owned by the user under Anthropic's commercial terms
+
+## License Compliance
+
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) due to the inclusion of PyMuPDF, which requires this license. All other dependencies are compatible with AGPL-3.0.
+
+The AGPL-3.0 license ensures:
+- Source code availability for all users
+- Network copyleft protection
+- Freedom to use, modify, and distribute the software
+- Requirement to share modifications under the same license
+
+## Copyright Notices
+
+This software contains components with the following copyright notices:
+
+- memvid: Copyright Olow304 and contributors
+- PyMuPDF: Copyright Artifex Software, Inc.
+- requests: Copyright Kenneth Reitz and contributors
+- tqdm: Copyright Casper da Costa-Luis and contributors
+- tiktoken: Copyright 2022 OpenAI, Shantanu Jain
+- qrcode: Copyright Lincoln Loop and contributors
+- opencv-python: Copyright OpenCV team and contributors
+
+## Additional Information
+
+For complete license texts and terms, please refer to:
+- This project's LICENSE file (AGPL-3.0)
+- Individual dependency documentation
+- Original source repositories
+
+For questions about licensing or commercial use, please see LICENSE_ANALYSIS.md for detailed information about license compatibility and requirements.
