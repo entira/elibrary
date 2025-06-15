@@ -389,59 +389,9 @@ class PDFLibraryProcessorV2:
         return text.strip()
     
     def detect_page_number_offset(self, page_texts: Dict[int, str]) -> int:
-        """Detect page numbering offset by analyzing page numbers in text content."""
-        try:
-            page_mappings = []
-            
-            # Scan through PDF pages to find content page numbers
-            for pdf_page_num, text in page_texts.items():
-                if not text.strip():
-                    continue
-                    
-                # Look for standalone page numbers in the text
-                lines = text.strip().split('\n')
-                for line in lines:
-                    line = line.strip()
-                    # Check if line is a standalone number (likely page number)
-                    if line.isdigit() and 1 <= int(line) <= 500:  # Reasonable page number range
-                        content_page = int(line)
-                        page_mappings.append((pdf_page_num, content_page))
-                        break  # Take first page number found on this page
-            
-            # Calculate offset from multiple samples
-            if page_mappings:
-                # Use the most common offset
-                offsets = [pdf_page - content_page for pdf_page, content_page in page_mappings]
-                from collections import Counter
-                offset_counts = Counter(offsets)
-                most_common_offset = offset_counts.most_common(1)[0][0]
-                
-                # Show some examples
-                examples = [(pdf_page, content_page) for pdf_page, content_page in page_mappings 
-                           if pdf_page - content_page == most_common_offset][:3]
-                
-                print(f"  📋 Detected page offset: {most_common_offset}")
-                for pdf_page, content_page in examples:
-                    print(f"     PDF page {pdf_page} -> content page {content_page}")
-                
-                return most_common_offset
-            
-            # Fallback: try to find first page "1"
-            for pdf_page_num, text in page_texts.items():
-                lines = text.strip().split('\n')
-                for line in lines:
-                    if line.strip() == "1":
-                        offset = pdf_page_num - 1
-                        print(f"  📋 Fallback: detected offset {offset} (page 1 found on PDF page {pdf_page_num})")
-                        return offset
-            
-            # Default: assume no offset if we can't detect it
-            print(f"  📋 Could not detect page offset, using default offset: 0")
-            return 0
-            
-        except Exception as e:
-            print(f"  ⚠️ Error detecting page offset: {e}, using default offset: 0")
-            return 0
+        """Always return 0 - use PDF page numbers as-is."""
+        print(f"  📋 Using PDF page numbers directly (no offset)")
+        return 0
 
     def extract_text_with_pages(self, pdf_path: Path) -> Tuple[Dict[int, str], int, int]:
         """Extract text from PDF with page-by-page mapping and detect page offset."""
