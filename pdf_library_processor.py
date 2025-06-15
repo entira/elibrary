@@ -490,7 +490,9 @@ class PDFLibraryProcessorV2:
                     'pages': set(),
                     'title': meta.get('title', ''),
                     'authors': meta.get('authors', ''),
-                    'year': meta.get('year', '')
+                    'publishers': meta.get('publishers', ''),
+                    'year': meta.get('year', ''),
+                    'doi': meta.get('doi', '')
                 }
             
             files[file_name]['chunks'] += 1

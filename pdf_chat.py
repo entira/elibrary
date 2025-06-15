@@ -2,6 +2,11 @@
 """
 PDF Library Chat Interface V2 with Interactive Library Selection
 Interactive chat with PDF library video memory using local Ollama.
+
+Fixed Issues:
+- Publishers and DOI/ISBN now display correctly in library info
+- Clean initialization without LLM warnings when using Ollama
+- Enhanced metadata display with complete book information
 """
 
 import os
@@ -11,6 +16,7 @@ import json
 import requests
 import termios
 import tty
+import warnings
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from memvid import MemvidChat
@@ -91,13 +97,16 @@ class PDFLibraryChatV2:
         # Initialize Ollama LLM if requested
         self.llm = OllamaLLM() if use_ollama else None
         
-        # Initialize MemvidChat without LLM (we use our own Ollama)
+        # Initialize MemvidChat/MemvidRetriever without external LLM warnings
         try:
-            self.chat = MemvidChat(str(self.video_file), str(self.index_file), llm_provider=None)
-        except:
-            # Fallback: initialize without LLM parameters
+            # Try MemvidRetriever first to avoid LLM initialization warnings
             from memvid import MemvidRetriever
             self.chat = MemvidRetriever(str(self.video_file), str(self.index_file))
+        except ImportError:
+            # Fallback to MemvidChat with warnings suppressed
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self.chat = MemvidChat(str(self.video_file), str(self.index_file), llm_provider=None)
         
         # Session stats
         self.session_stats = {
