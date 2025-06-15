@@ -287,6 +287,9 @@ class PDFLibraryProcessorV2:
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
         
+        # Track page offsets for each processed file
+        self.page_offsets = {}
+        
         # Chunk configuration - token-based sliding window
         self.chunk_size_tokens = 500    # Target tokens per chunk (optimal for RAG)
         self.overlap_percentage = 0.15  # 15% overlap between chunks
@@ -385,8 +388,63 @@ class PDFLibraryProcessorV2:
         
         return text.strip()
     
-    def extract_text_with_pages(self, pdf_path: Path) -> Tuple[Dict[int, str], int]:
-        """Extract text from PDF with page-by-page mapping using PyMuPDF."""
+    def detect_page_number_offset(self, page_texts: Dict[int, str]) -> int:
+        """Detect page numbering offset by analyzing page numbers in text content."""
+        try:
+            page_mappings = []
+            
+            # Scan through PDF pages to find content page numbers
+            for pdf_page_num, text in page_texts.items():
+                if not text.strip():
+                    continue
+                    
+                # Look for standalone page numbers in the text
+                lines = text.strip().split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Check if line is a standalone number (likely page number)
+                    if line.isdigit() and 1 <= int(line) <= 500:  # Reasonable page number range
+                        content_page = int(line)
+                        page_mappings.append((pdf_page_num, content_page))
+                        break  # Take first page number found on this page
+            
+            # Calculate offset from multiple samples
+            if page_mappings:
+                # Use the most common offset
+                offsets = [pdf_page - content_page for pdf_page, content_page in page_mappings]
+                from collections import Counter
+                offset_counts = Counter(offsets)
+                most_common_offset = offset_counts.most_common(1)[0][0]
+                
+                # Show some examples
+                examples = [(pdf_page, content_page) for pdf_page, content_page in page_mappings 
+                           if pdf_page - content_page == most_common_offset][:3]
+                
+                print(f"  📋 Detected page offset: {most_common_offset}")
+                for pdf_page, content_page in examples:
+                    print(f"     PDF page {pdf_page} -> content page {content_page}")
+                
+                return most_common_offset
+            
+            # Fallback: try to find first page "1"
+            for pdf_page_num, text in page_texts.items():
+                lines = text.strip().split('\n')
+                for line in lines:
+                    if line.strip() == "1":
+                        offset = pdf_page_num - 1
+                        print(f"  📋 Fallback: detected offset {offset} (page 1 found on PDF page {pdf_page_num})")
+                        return offset
+            
+            # Default: assume no offset if we can't detect it
+            print(f"  📋 Could not detect page offset, using default offset: 0")
+            return 0
+            
+        except Exception as e:
+            print(f"  ⚠️ Error detecting page offset: {e}, using default offset: 0")
+            return 0
+
+    def extract_text_with_pages(self, pdf_path: Path) -> Tuple[Dict[int, str], int, int]:
+        """Extract text from PDF with page-by-page mapping and detect page offset."""
         try:
             # Open PDF with PyMuPDF
             doc = fitz.open(pdf_path)
@@ -409,13 +467,17 @@ class PDFLibraryProcessorV2:
                     page_texts[actual_page_num] = ""
             
             doc.close()
-            return page_texts, num_pages
+            
+            # Detect page numbering offset
+            page_offset = self.detect_page_number_offset(page_texts)
+            
+            return page_texts, num_pages, page_offset
                 
         except Exception as e:
             print(f"Error reading PDF {pdf_path}: {e}")
-            return {}, 0
+            return {}, 0, 0
     
-    def create_enhanced_chunks(self, page_texts: Dict[int, str]) -> List[EnhancedChunk]:
+    def create_enhanced_chunks(self, page_texts: Dict[int, str], page_offset: int = 0) -> List[EnhancedChunk]:
         """Create chunks with enhanced page metadata."""
         chunks = []
         chunk_index = 0
@@ -436,10 +498,12 @@ class PDFLibraryProcessorV2:
             # Create enhanced chunks for this page
             for i, chunk_text in enumerate(page_chunks):
                 if chunk_text.strip():
+                    # Apply page offset correction for content page numbers
+                    corrected_page = max(1, page_num - page_offset)
                     enhanced_chunk = EnhancedChunk(
                         text=chunk_text,
-                        start_page=page_num,
-                        end_page=page_num,
+                        start_page=corrected_page,
+                        end_page=corrected_page,
                         chunk_index=chunk_index,
                         total_chunks_on_pages=len(page_chunks)
                     )
@@ -447,7 +511,7 @@ class PDFLibraryProcessorV2:
                     chunk_index += 1
         
         # Handle cross-page chunks (optional enhancement)
-        cross_page_chunks = self._create_cross_page_chunks(page_texts, sorted_pages)
+        cross_page_chunks = self._create_cross_page_chunks(page_texts, sorted_pages, page_offset)
         for cross_chunk in cross_page_chunks:
             chunks.append(cross_chunk)
             chunk_index += 1
@@ -528,7 +592,7 @@ class PDFLibraryProcessorV2:
         return text.strip()
     
     def _create_cross_page_chunks(self, page_texts: Dict[int, str], 
-                                sorted_pages: List[int]) -> List[EnhancedChunk]:
+                                sorted_pages: List[int], page_offset: int = 0) -> List[EnhancedChunk]:
         """Create chunks that span across pages for better context."""
         cross_chunks = []
         
@@ -549,10 +613,14 @@ class PDFLibraryProcessorV2:
             if len(current_end) > 50 and len(next_start) > 50:
                 cross_text = current_end + " " + next_start
                 
+                # Apply page offset correction for cross-page chunks
+                corrected_start_page = max(1, current_page - page_offset)
+                corrected_end_page = max(1, next_page - page_offset)
+                
                 cross_chunk = EnhancedChunk(
                     text=cross_text,
-                    start_page=current_page,
-                    end_page=next_page,
+                    start_page=corrected_start_page,
+                    end_page=corrected_end_page,
                     chunk_index=-1,  # Will be set later
                     total_chunks_on_pages=1
                 )
@@ -565,23 +633,26 @@ class PDFLibraryProcessorV2:
         try:
             # Check if already processed is handled in process_library now
             
-            # Extract text with page mapping
+            # Extract text with page mapping and detect page offset
             print(f"  📄 Extracting text from {pdf_path.name}...")
-            page_texts, num_pages = self.extract_text_with_pages(pdf_path)
+            page_texts, num_pages, page_offset = self.extract_text_with_pages(pdf_path)
             
             if not page_texts:
                 print(f"  ❌ Warning: No text extracted from {pdf_path.name}")
                 return False
             
-            # Create enhanced chunks
+            # Create enhanced chunks with page offset correction
             print(f"  🔧 Creating enhanced chunks...")
-            enhanced_chunks = self.create_enhanced_chunks(page_texts)
+            enhanced_chunks = self.create_enhanced_chunks(page_texts, page_offset)
             
             if not enhanced_chunks:
                 print(f"  ❌ Warning: No chunks created from {pdf_path.name}")
                 return False
             
             print(f"  📊 Pages: {num_pages}, Enhanced chunks: {len(enhanced_chunks)}")
+            
+            # Store page offset for this file
+            self.page_offsets[str(pdf_path)] = page_offset
             
             # Get sample text for metadata extraction (first 10 chunks)
             sample_chunks = enhanced_chunks[:10]
@@ -701,7 +772,8 @@ class PDFLibraryProcessorV2:
             'total_chunks': len(metadata_list),
             'total_unique_pages': len(total_pages),
             'cross_page_chunks': cross_page_chunks,
-            'files': files
+            'files': files,
+            'page_offsets': getattr(self, 'page_offsets', {})
         }
     
     def process_library(self):
