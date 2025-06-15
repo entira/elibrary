@@ -420,7 +420,7 @@ class PDFLibraryChat:
             print()
     
     def search_library(self, query: str, limit: int = 5) -> str:
-        """Search library and return formatted results."""
+        """Search library and return formatted results with citations."""
         try:
             start_time = time.time()
             context_chunks = self.chat.search(query, top_k=limit)
@@ -429,13 +429,16 @@ class PDFLibraryChat:
             if not context_chunks:
                 return f"🔍 No relevant results found for: '{query}'"
             
+            # Add citations to context chunks
+            context_with_citations = self._add_citations_to_context(context_chunks)
+            
             # Format results
             result = f"🔍 Search results for: '{query}' ({search_time:.2f}s)\n\n"
             result += "📄 Relevant passages:\n"
             result += "─" * 60 + "\n"
             
-            for i, chunk in enumerate(context_chunks, 1):
-                result += f"\n[Result {i}]:\n{chunk}\n"
+            for i, chunk_with_citation in enumerate(context_with_citations, 1):
+                result += f"\n[Result {i}]:\n{chunk_with_citation}\n"
             
             result += "─" * 60
             return result
