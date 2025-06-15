@@ -8,6 +8,7 @@ Advanced PDF processing system that converts document libraries into searchable 
 
 - Python 3.8+
 - Ollama with mistral:latest model
+- Ollama with momic-embed-text embeding model
 - MemVid library
 
 ### Installation
@@ -139,11 +140,11 @@ Example interaction:
 
 Based on your library, here are key podcasting best practices:
 
-1. Consistent publishing schedule is crucial for audience retention. [Podcasting 100 Success Secrets, page 23]
+1.	A predictable release schedule helps build listener habits. [The Podcast Blueprint, page 19]
 
-2. Quality audio equipment significantly impacts listener experience. [Podcasting for Dummies, page 45]
+2.	Clear, high-fidelity audio is essential for professional podcast presentation. [Audio Mastery for Podcasters, page 42]
 
-3. Engaging content should balance entertainment with valuable information. [Profitable Podcasting, page 67]
+3.	Successful episodes mix storytelling with actionable insights. [Smart Podcast Strategies, page 58]
 ```
 
 ## Configuration
@@ -221,11 +222,9 @@ python3 pdf_library_processor.py --max-workers 2
 
 - **CDN/S3 Streaming**: On-demand video frame streaming from cloud storage
 - **Content Encryption**: AES-256-GCM encryption for QR code content
-- **Web3 Integration**: Crypto wallet-based key derivation for access control
-- **Anonymous Access**: Tor hidden service integration
 - **MCP Server**: Model Context Protocol implementation for AI assistant integration
 - **Advanced Search**: Semantic search with similarity scoring
-- **Multi-format Support**: EPUB, DOCX, and other document formats
+- **Multi-format Support**: EPUB, ...
 
 ### Architecture Evolution
 
