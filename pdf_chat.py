@@ -4,14 +4,35 @@ PDF Library Chat Interface with Interactive Library Selection
 Interactive chat with PDF library video memory using local Ollama.
 """
 
-import os
+# Suppress ALL warnings and output before any imports
+import warnings
 import sys
+import os
+from io import StringIO
+import contextlib
+
+warnings.filterwarnings("ignore")
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+os.environ['PYTHONWARNINGS'] = 'ignore'
+
+# Capture and suppress stdout during problematic imports
+def suppress_stdout():
+    return contextlib.redirect_stdout(StringIO())
+
+def suppress_stderr():  
+    return contextlib.redirect_stderr(StringIO())
+
 import time
 import json
 import requests
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from memvid import MemvidChat
+
+# Suppress ALL output during memvid import
+with suppress_stdout(), suppress_stderr(), warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from memvid import MemvidChat
 
 # Cross-platform keyboard input
 try:
@@ -71,7 +92,7 @@ INSTRUCTIONS:
             return f"Error generating response: {e}"
 
 
-class PDFLibraryChatV2:
+class PDFLibraryChat:
     """Enhanced chat interface with interactive library selection."""
     
     def __init__(self, use_ollama: bool = True):
@@ -98,12 +119,9 @@ class PDFLibraryChatV2:
         self.llm = OllamaLLM() if use_ollama else None
         
         # Initialize MemvidChat without LLM (we use our own Ollama)
-        try:
-            self.chat = MemvidChat(str(self.video_file), str(self.index_file), llm_provider=None)
-        except:
-            # Fallback: initialize without LLM parameters
-            from memvid import MemvidRetriever
-            self.chat = MemvidRetriever(str(self.video_file), str(self.index_file))
+        # Use MemvidRetriever directly to avoid LLM initialization error
+        from memvid import MemvidRetriever
+        self.chat = MemvidRetriever(str(self.video_file), str(self.index_file))
         
         # Session stats
         self.session_stats = {
@@ -111,10 +129,10 @@ class PDFLibraryChatV2:
             "start_time": time.time()
         }
         
-        print(f"📚 PDF Library Chat V2 initialized")
+        print(f"📚 PDF Library Chat initialized")
         print(f"🎥 Video: {Path(self.video_file).name}")
         print(f"📋 Index: {Path(self.index_file).name}")
-        print(f"📊 Version: {self.library_info['version']}")
+        # Version information removed
         print(f"📝 {self.library_info['chunks']} chunks from {self.library_info['files']} files")
         if self.use_ollama:
             print(f"🤖 Using Ollama LLM: {self.llm.model}")
@@ -147,11 +165,11 @@ class PDFLibraryChatV2:
                             "directory": dir_path,
                             "chunks": library_info.get("total_chunks", 0),
                             "files": library_info.get("total_files", "Unknown"),
-                            "version": "V2 Enhanced" if "v2" in video_name.lower() or "v2" in dir_path.lower() else "V1 Basic",
+                            "version": "Current",
                             "avg_length": library_info.get("avg_length", "Unknown")
                         })
         
-        # Sort by directory name (newest/v2 first)
+        # Sort by directory name
         libraries.sort(key=lambda x: (x["version"], x["directory"]), reverse=True)
         return libraries
     
@@ -165,7 +183,7 @@ class PDFLibraryChatV2:
                 "total_chunks": len(data.get("metadata", []))
             }
             
-            # Check for enhanced stats (V2)
+            # Check for enhanced stats
             if "enhanced_stats" in data:
                 stats = data["enhanced_stats"]
                 info["total_files"] = stats.get("total_files", 0)
@@ -207,7 +225,7 @@ class PDFLibraryChatV2:
                 print(f"{highlight}{number} {library['name']}")
                 
                 print(f"     📂 Directory: {library['directory']}")
-                print(f"     📊 Version: {library['version']}")
+                # Version information removed
                 print(f"     📝 Chunks: {library['chunks']} (avg: {library['avg_length']})")
                 print(f"     📚 Files: {library['files']}")
                 print()
@@ -253,7 +271,7 @@ class PDFLibraryChatV2:
         print("✅" + "="*70 + "✅")
         print(f"📚 Selected Library: {selected['name']}")
         print("✅" + "="*70 + "✅")
-        print(f"📊 Version: {selected['version']}")
+        # Version information removed
         print(f"📝 Chunks: {selected['chunks']} (avg: {selected['avg_length']})")
         print(f"📚 Files: {selected['files']}")
         print()
@@ -273,25 +291,41 @@ class PDFLibraryChatV2:
                 'books': {}
             }
             
-            # Check if we have enhanced stats (V2)
+            # Check if we have enhanced stats
             if 'enhanced_stats' in index_data:
                 enhanced = index_data['enhanced_stats']
                 stats['total_books'] = enhanced.get('total_files', 0)
                 stats['cross_page_chunks'] = enhanced.get('cross_page_chunks', 0)
                 
-                # Get detailed book information
-                files_info = enhanced.get('files', {})
-                for filename, file_data in files_info.items():
-                    clean_name = Path(filename).stem[:50]  # Shorten filename
-                    stats['books'][clean_name] = {
-                        'title': file_data.get('title', clean_name),
-                        'authors': file_data.get('authors', 'Unknown'),
-                        'publishers': file_data.get('publishers', 'Unknown'),
-                        'year': file_data.get('year', 'Unknown'),
-                        'doi': file_data.get('doi', 'Unknown'),
-                        'chunks': file_data.get('chunks', 0),
-                        'pages': file_data.get('unique_pages', 0)
-                    }
+                # Get detailed book information from metadata
+                metadata_list = index_data.get('metadata', [])
+                books_by_file = {}
+                
+                # Group metadata by file to get book-level information
+                for meta in metadata_list:
+                    if 'enhanced_metadata' in meta:
+                        enhanced_meta = meta['enhanced_metadata']
+                        file_name = enhanced_meta.get('file_name', '')
+                        
+                        if file_name not in books_by_file:
+                            books_by_file[file_name] = {
+                                'title': enhanced_meta.get('title', 'Unknown'),
+                                'authors': enhanced_meta.get('authors', ['Unknown']),
+                                'publishers': enhanced_meta.get('publishers', ['Unknown']),
+                                'year': enhanced_meta.get('year', 'Unknown'),
+                                'doi': enhanced_meta.get('doi', 'Unknown'),
+                                'chunks': 0,
+                                'pages': enhanced_meta.get('num_pages', 0)
+                            }
+                        books_by_file[file_name]['chunks'] += 1
+                
+                # Convert to the expected format
+                for file_name, book_data in books_by_file.items():
+                    clean_name = Path(file_name).stem[:50]
+                    stats['books'][clean_name] = book_data
+                
+                # Update total books count
+                stats['total_books'] = len(books_by_file)
             else:
                 # Fallback for V1: estimate from PDF directory
                 pdf_dir = Path("./pdf_books")
@@ -331,16 +365,47 @@ class PDFLibraryChatV2:
         print(f"   📝 Total chunks: {stats['total_chunks']}")
         if 'cross_page_chunks' in stats:
             print(f"   🔗 Cross-page chunks: {stats['cross_page_chunks']}")
-        print(f"   📊 Version: {self.library_info['version']}")
+        # Version information removed as requested
         print()
         
         print("📑 Books in library:")
         for i, (file_key, info) in enumerate(stats['books'].items(), 1):
             # Display full title without truncation
             title = info['title']
-            # Remove list brackets and quotes from authors if present
-            authors = str(info['authors']).strip("[]'\"")
-            publishers = str(info['publishers']).strip("[]'\"") if info.get('publishers', 'Unknown') != 'Unknown' else 'Unknown'
+            # Properly format authors and publishers from list format
+            if isinstance(info['authors'], list):
+                authors = ', '.join(info['authors'])
+            else:
+                # Handle string representation of list like "['Author1', 'Author2']"
+                authors_str = str(info['authors'])
+                if authors_str.startswith('[') and authors_str.endswith(']'):
+                    # Parse the string representation of list
+                    import ast
+                    try:
+                        authors_list = ast.literal_eval(authors_str)
+                        authors = ', '.join(authors_list)
+                    except:
+                        # Fallback: remove brackets and quotes manually but preserve content
+                        authors = authors_str.strip('[]').replace("'", "").replace('"', '')
+                else:
+                    authors = authors_str
+            
+            if isinstance(info['publishers'], list):
+                publishers = ', '.join(info['publishers'])
+            else:
+                # Handle string representation of list like "['Publisher1', 'Publisher2']"
+                publishers_str = str(info['publishers'])
+                if publishers_str.startswith('[') and publishers_str.endswith(']'):
+                    # Parse the string representation of list
+                    import ast
+                    try:
+                        publishers_list = ast.literal_eval(publishers_str)
+                        publishers = ', '.join(publishers_list)
+                    except:
+                        # Fallback: remove brackets and quotes manually but preserve content
+                        publishers = publishers_str.strip('[]').replace("'", "").replace('"', '')
+                else:
+                    publishers = publishers_str if publishers_str != 'Unknown' else 'Unknown'
             doi = info.get('doi', 'Unknown')
             
             print(f"   {i:2d}. {title}")
@@ -358,7 +423,7 @@ class PDFLibraryChatV2:
         """Search library and return formatted results."""
         try:
             start_time = time.time()
-            context_chunks = self.chat.search_context(query, top_k=limit)
+            context_chunks = self.chat.search(query, top_k=limit)
             search_time = time.time() - start_time
             
             if not context_chunks:
@@ -419,7 +484,7 @@ class PDFLibraryChatV2:
             start_time = time.time()
             
             # Get context from video memory
-            context_chunks = self.chat.search_context(query, top_k=5)
+            context_chunks = self.chat.search(query, top_k=5)
             
             if not context_chunks:
                 return "🔍 I couldn't find relevant information in the library for your question."
@@ -494,16 +559,13 @@ INSTRUCTIONS:
     
     def run_chat(self):
         """Run the interactive chat loop."""
-        print("🚀 PDF Library Chat V2 started!")
+        print("🚀 PDF Library Chat started!")
         print("   Type 'help' for commands or ask any question about your books.")
         print("   Type 'exit' or 'quit' to end the session.")
         print()
         
-        # Start memvid chat session
-        try:
-            self.chat.start_session()
-        except Exception as e:
-            print(f"Warning: Could not start MemvidChat session: {e}")
+        # MemvidRetriever doesn't need session start
+        # Ready to process queries
         
         while True:
             try:
@@ -515,7 +577,7 @@ INSTRUCTIONS:
                 
                 # Handle commands
                 if user_input.lower() in ['exit', 'quit', 'q']:
-                    print("\n👋 Goodbye! Thanks for using PDF Library Chat V2.")
+                    print("\n👋 Goodbye! Thanks for using PDF Library Chat.")
                     break
                 
                 elif user_input.lower() == 'help':
@@ -576,7 +638,7 @@ def main():
     
     # Initialize and run chat
     try:
-        chat_app = PDFLibraryChatV2(use_ollama=use_ollama)
+        chat_app = PDFLibraryChat(use_ollama=use_ollama)
         chat_app.run_chat()
         
     except Exception as e:
