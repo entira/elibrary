@@ -58,6 +58,7 @@ python3 pdf_chat.py
 - **Enhanced Metadata**: Automatic extraction of titles, authors, publishers, publication years
 - **PDF Page Citations**: Page references using PDF file page numbers in chat responses
 - **Cross-page Context**: Context preservation across page boundaries
+- **Semantic Search**: Vector-based search across all processed content using embeddings
 - **Smart Skip Processing**: Avoids reprocessing already processed PDFs
 - **Parallel Processing**: Multi-worker QR generation for faster processing
 - **Clean Output**: Comprehensive warning suppression for professional experience
@@ -132,7 +133,8 @@ The chat system provides:
 - Interactive Q&A with your PDF library
 - Automatic citations with book titles and PDF page numbers
 - Context-aware responses using RAG
-- Real-time search across all processed documents
+- Semantic search across all processed documents with vector embeddings
+- Real-time search results with relevance-based ranking
 
 Example interaction:
 ```
@@ -224,7 +226,7 @@ python3 pdf_library_processor.py --max-workers 2
 - **Content Encryption**: AES-256-GCM encryption for QR code content
 - **MCP Server**: Model Context Protocol implementation for AI assistant integration
 - **Advanced Search**: Semantic search with similarity scoring
-- **Multi-format Support**: EPUB, ...
+- **Multi-format Support**: EPUB, DOCX, and other document formats
 
 ### Architecture Evolution
 
