@@ -4,12 +4,130 @@ Advanced PDF processing system that converts document libraries into searchable 
 
 ## 🏗️ System Architecture
 
+### Current Implementation
 Two-version processing pipeline with enhanced metadata extraction and cross-page context preservation:
 
 - **V1 Processor**: Basic PDF chunking (512 chars, ~480 avg length)
 - **V2 Processor**: Token-based sliding window chunking (500 tokens, 15% overlap) with detailed page metadata
 
-## 🎯 Features
+### Future Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Input Layer"
+        PDF[📄 PDF Documents]
+        CONFIG[⚙️ Configuration]
+    end
+    
+    subgraph "Processing Pipeline"
+        PROC[🔧 PDF Processor V2]
+        ENC[🔐 Encrypted QR Encoder]
+        VID[🎥 Video Generator]
+    end
+    
+    subgraph "Storage Layer"
+        CDN[☁️ CDN/S3 Storage]
+        LOCAL[💾 Local Cache]
+    end
+    
+    subgraph "Security Layer"
+        WEB3[🌐 Web3 Key Derivation]
+        TOR[🕸️ Tor Network]
+        ENCRYPT[🔒 AES-256-GCM]
+    end
+    
+    subgraph "Access Layer"
+        WEBAPP[🌍 Web3 + Tor App]
+        MCP[🤖 MCP Server]
+        API[📡 REST API]
+    end
+    
+    subgraph "Client Applications"
+        CLAUDE[🧠 Claude Desktop]
+        VSCODE[📝 VS Code Extension]
+        CLI[⌨️ CLI Tools]
+        BROWSER[🌐 Anonymous Browser]
+    end
+    
+    %% Processing Flow
+    PDF --> PROC
+    PROC --> ENC
+    ENC --> VID
+    
+    %% Storage Flow  
+    VID --> CDN
+    VID --> LOCAL
+    
+    %% Security Integration
+    WEB3 --> ENCRYPT
+    TOR --> WEBAPP
+    ENCRYPT --> ENC
+    
+    %% Access Flow
+    CDN --> WEBAPP
+    CDN --> MCP
+    CDN --> API
+    
+    %% Client Integration
+    MCP --> CLAUDE
+    MCP --> VSCODE
+    MCP --> CLI
+    WEBAPP --> BROWSER
+    
+    %% Styling
+    classDef input fill:#e1f5fe
+    classDef processing fill:#f3e5f5
+    classDef storage fill:#e8f5e8
+    classDef security fill:#fff3e0
+    classDef access fill:#fce4ec
+    classDef client fill:#f1f8e9
+    
+    class PDF,CONFIG input
+    class PROC,ENC,VID processing
+    class CDN,LOCAL storage
+    class WEB3,TOR,ENCRYPT security
+    class WEBAPP,MCP,API access
+    class CLAUDE,VSCODE,CLI,BROWSER client
+```
+
+### Detailed Component Architecture
+
+```mermaid
+graph LR
+    subgraph "PDF Processing Pipeline"
+        A[📄 Raw PDF] --> B[🔧 PyMuPDF Extraction]
+        B --> C[🧹 Text Cleaning]
+        C --> D[🔢 Token-based Chunking]
+        D --> E[📊 Metadata Extraction]
+        E --> F[🔐 AES Encryption]
+        F --> G[📱 QR Generation]
+        G --> H[🎥 Video Assembly]
+    end
+    
+    subgraph "Web3 Security Flow"
+        I[🔑 Wallet Private Key] --> J[⚡ Key Derivation]
+        J --> K[🔒 Encryption Key]
+        K --> F
+        L[🕸️ Tor Browser] --> M[🌐 .onion Access]
+        M --> N[🔓 Client Decryption]
+    end
+    
+    subgraph "CDN Distribution"
+        H --> O[☁️ S3 Upload]
+        O --> P[🌍 CloudFront CDN]
+        P --> Q[📡 HTTP Range Requests]
+        Q --> R[🎯 Frame-level Access]
+    end
+    
+    subgraph "MCP Integration"
+        S[🤖 MCP Server] --> T[🔍 Encrypted Search]
+        T --> U[🧠 AI Assistant]
+        U --> V[💬 Enhanced Responses]
+        V --> W[📚 Citation Integration]
+    end
+```
+
+## 🎯 Current Features
 
 - **High-Quality PDF Processing**: PyMuPDF-based extraction that eliminates encoding issues
 - **Token-Based Chunking**: 500-token sliding window chunks with 15% overlap for optimal RAG performance
@@ -22,6 +140,171 @@ Two-version processing pipeline with enhanced metadata extraction and cross-page
 - **Interactive Chat**: Query your PDF library with natural language and source citations
 - **Accurate Page References**: Real PDF page numbers for precise citation tracking
 - **Enhanced Library Display**: Complete metadata including publishers, DOI/ISBN information
+
+## 🚀 Planned Features & Roadmap
+
+### 📍 Phase 1: Cloud Infrastructure (Q1 2025)
+
+#### CDN/S3 Streaming Support ([Issue #11](https://github.com/entira/elibrary/issues/11))
+- **HTTP Range Requests**: Stream video frames on-demand from CDN
+- **Multi-CDN Support**: AWS S3/CloudFront, generic HTTP servers
+- **Authentication**: Bearer tokens, Basic Auth, IAM credentials
+- **Performance**: 95%+ bandwidth reduction vs full video download
+- **Scalability**: Unlimited concurrent users with shared CDN storage
+
+**Implementation:**
+```python
+# Stream-enabled chat interface
+chat = StreamingMemvidChat(
+    video_url="https://cdn.example.com/library.mp4",
+    index_url="https://cdn.example.com/library_index.json",
+    auth_headers={"Authorization": "Bearer token"}
+)
+```
+
+### 🔒 Phase 2: Security & Encryption (Q2 2025)
+
+#### QR Code Content Encryption ([Issue #12](https://github.com/entira/elibrary/issues/12))
+- **AES-256-GCM Encryption**: Military-grade encryption for sensitive content
+- **Zero-Knowledge Server**: Server cannot decrypt user content
+- **Public Metadata**: Keep indexing fast while content stays encrypted
+- **Key Management**: PBKDF2 key derivation, environment-based keys
+- **Streaming Compatible**: Video structure preserved for CDN delivery
+
+**Security Model:**
+```mermaid
+graph TD
+    A[📄 Original Text] --> B[🔐 AES-256-GCM]
+    B --> C[📱 Encrypted QR]
+    C --> D[🎥 Video Frame]
+    
+    E[🔑 User Key] --> F[🔓 Client Decryption]
+    F --> G[📖 Readable Content]
+    
+    H[🌍 Public CDN] --> I[❌ Cannot Decrypt]
+    D --> H
+```
+
+### 🕸️ Phase 3: Anonymous Access (Q3 2025)
+
+#### Web3 + Tor Application ([Issue #13](https://github.com/entira/elibrary/issues/13))
+- **Tor Hidden Service**: Anonymous .onion domain access
+- **Web3 Authentication**: Crypto wallet-based key derivation
+- **Client-Side Decryption**: Browser-based cryptography (Web Crypto API)
+- **No External Dependencies**: Fully self-contained for Tor compatibility
+- **Privacy-First Design**: Zero tracking, no cookies, no analytics
+
+**Web3 Integration:**
+```javascript
+// Browser-based key derivation
+class Web3KeyManager {
+    async deriveEncryptionKey(privateKey, libraryId) {
+        const combined = `${privateKey}:${libraryId}:memvid:v1`;
+        // PBKDF2 key derivation in browser
+        return await crypto.subtle.deriveBits({
+            name: 'PBKDF2',
+            salt: encoder.encode('memvid-web3-salt'),
+            iterations: 100000,
+            hash: 'SHA-256'
+        }, keyMaterial, 256);
+    }
+}
+```
+
+### 🤖 Phase 4: AI Integration (Q4 2025)
+
+#### MCP Server for Documentation Q&A ([Issue #14](https://github.com/entira/elibrary/issues/14))
+- **Model Context Protocol**: Standard integration with Claude and other AI assistants
+- **Technical Documentation Focus**: Code examples, API references, tutorials
+- **IDE Integration**: VS Code extensions, Claude Desktop plugins
+- **Real-time Q&A**: Fast responses for development workflows
+- **Enhanced Citations**: Precise source references with line numbers
+
+**MCP Tools:**
+```python
+# MCP tool examples
+@mcp_server.tool("search_docs")
+async def search_docs(query: str, library: str, top_k: int = 5):
+    """Search technical documentation with encrypted content"""
+    
+@mcp_server.tool("answer_question") 
+async def answer_question(question: str, library: str):
+    """Answer questions using encrypted docs with citations"""
+    
+@mcp_server.tool("explain_code")
+async def explain_code(code_snippet: str, language: str):
+    """Explain code using relevant documentation"""
+```
+
+## 🎯 Use Case Evolution
+
+### Current: Basic PDF Q&A
+```bash
+# Simple local chat
+python3 pdf_chat.py
+🤔 You: How to make better podcasts?
+🤖 Answer with citations...
+```
+
+### Phase 1: Scalable Cloud Deployment
+```bash
+# Multi-user cloud-based system
+chat = StreamingMemvidChat("https://cdn.company.com/docs.mp4")
+# Serves unlimited users from shared CDN
+```
+
+### Phase 2: Secure Enterprise
+```bash
+# Encrypted content for sensitive documents
+chat = EncryptedMemvidChat(video_url, encryption_key)
+# Zero-knowledge: server never sees decrypted content
+```
+
+### Phase 3: Anonymous Research
+```bash
+# Privacy-focused research via Tor
+# Access via: abc123def456.onion
+# Web3 wallet authentication
+# Fully anonymous document analysis
+```
+
+### Phase 4: AI-Augmented Development
+```bash
+# VS Code integration
+# Hover over function → instant documentation
+# Claude Desktop enhanced with domain knowledge
+# Real-time code explanations with citations
+```
+
+## 📊 Performance & Security Matrix
+
+| Feature | Scalability | Security | Privacy | Performance |
+|---------|-------------|----------|---------|-------------|
+| **Current Local** | ⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **CDN Streaming** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **QR Encryption** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **Web3 + Tor** | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **MCP Integration** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+
+## 🔗 Integration Ecosystem
+
+### Development Tools
+- **VS Code Extension**: Inline documentation, hover help
+- **Claude Desktop**: Enhanced AI responses with domain knowledge
+- **CLI Tools**: Command-line documentation search
+- **API Gateway**: REST endpoints for custom integrations
+
+### Enterprise Features
+- **Multi-tenancy**: Isolated libraries per organization
+- **Access Control**: Role-based permissions, audit logs
+- **Analytics**: Usage tracking, search analytics
+- **Compliance**: GDPR-ready, SOC2 compatible
+
+### Research Applications
+- **Academic Papers**: Encrypted research document analysis
+- **Legal Documents**: Confidential case law research
+- **Medical Records**: HIPAA-compliant document Q&A
+- **Financial Reports**: Sensitive financial analysis
 
 ## 📋 Požiadavky
 
