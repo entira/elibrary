@@ -1,18 +1,18 @@
 # Developer Documentation
 
-This document contains development notes, technical implementation details, and architectural decisions for the eLibrary PDF processing system.
+Technical implementation details and architectural decisions for the eLibrary PDF processing system. For user documentation, see [README.md](README.md).
 
-## Quick Commands
+## Developer Quick Reference
 
 ```bash
-# Process PDF library
-python3 pdf_library_processor.py --max-workers 8
+# Process with debug output
+python3 pdf_library_processor.py --max-workers 8 --force-reprocess
 
-# Chat with processed documents  
-python3 pdf_chat.py
+# Inspect generated metadata
+python3 -c "import json; data=json.load(open('./memvid_out/library_index.json')); print(json.dumps(data['enhanced_stats'], indent=2))"
 
-# View library statistics
-python3 -c "import json; data=json.load(open('./memvid_out/library_index.json')); print(f'Files: {data[\"enhanced_stats\"][\"total_files\"]}, Chunks: {data[\"enhanced_stats\"][\"total_chunks\"]}')"
+# Monitor memory usage during processing
+top -p $(pgrep -f pdf_library_processor)
 ```
 
 ## System Architecture
@@ -139,18 +139,20 @@ def monkey_patch_parallel_qr_generation(encoder, n_workers: int):
 - **Metadata Enhancement**: AI-powered extraction of structured information
 - **Citation Accuracy**: Smart page number detection and validation
 
-## File Structure
+## Internal Architecture
+
+### Code Organization
 
 ```
-elibrary/
-├── pdf_library_processor.py     # Main processor with enhanced features
-├── pdf_chat.py                  # Interactive chat interface
-├── requirements.txt             # Python dependencies
-├── memvid_out/                  # Output directory
-│   ├── library.mp4              # Video index
-│   ├── library_index.json       # Enhanced metadata
-│   └── library_index.faiss      # Vector search index
-└── pdf_books/                   # Input PDF files
+src/
+├── PDFLibraryProcessorV2        # Main processing class
+│   ├── extract_text_with_pages() # PyMuPDF integration
+│   ├── create_enhanced_chunks()  # Token-based chunking
+│   ├── extract_metadata_with_ollama() # AI metadata extraction
+│   └── process_pdf_enhanced()    # Main processing pipeline
+├── OllamaEmbedder              # Vector embedding generation
+├── EnhancedChunk               # Chunk data structure
+└── Citation utilities          # Page reference system
 ```
 
 ## Configuration Options
@@ -186,19 +188,31 @@ The system tracks:
 - Memory usage patterns
 - Error rates and handling
 
-## Dependencies
+## Technical Dependencies
 
-Core libraries and their purposes:
+### Core Libraries
 
-```txt
-memvid                    # Video indexing and QR generation
-pymupdf                   # High-quality PDF text extraction  
-tiktoken                  # Token-based text chunking
-requests                  # HTTP communication with Ollama
-tqdm                      # Progress tracking and display
-qrcode[pil]              # QR code generation
-opencv-python            # Image processing support
+```python
+# Processing pipeline
+import pymupdf as fitz        # PDF text extraction
+import tiktoken               # GPT-4 compatible tokenization
+from memvid import MemvidEncoder  # Video indexing
+
+# AI/ML integration  
+import requests               # Ollama API communication
+from concurrent.futures import ProcessPoolExecutor  # Parallel processing
+
+# Data handling
+import json                   # Metadata serialization
+import qrcode                 # QR generation for video frames
 ```
+
+### Version Requirements
+
+- PyMuPDF >= 1.23.0 (AGPL-3.0 licensed)
+- tiktoken >= 0.5.0 (MIT)
+- memvid >= 1.0.0 (MIT)
+- Python 3.8+ required for ProcessPoolExecutor enhancements
 
 ## Development Workflow
 
@@ -220,21 +234,23 @@ opencv-python            # Image processing support
 
 ## Future Development Ideas
 
-### Enhanced Processing
-- Multi-format document support (EPUB, ...)
-- Real-time document updates and synchronization
-- Advanced semantic search capabilities
-- Document similarity analysis and clustering
+### Performance Enhancements
+- Incremental processing for large document updates
+- Memory-mapped file access for very large PDFs
+- GPU acceleration for embedding generation
+- Distributed processing across multiple nodes
 
-### Infrastructure Improvements
-- CDN/S3 streaming for large libraries
-- Content encryption for sensitive documents
+### Advanced Features
+- Multi-format document support (EPUB, DOCX, HTML)
+- Real-time document synchronization
+- Advanced similarity scoring algorithms
+- Content-based document clustering
 
-### AI Integration
-- Model Context Protocol (MCP) server implementation
-- Advanced question answering with reasoning
-- Automatic document summarization
-- Content recommendation systems
+### Enterprise Features
+- CDN/S3 integration for scalable storage
+- End-to-end encryption for sensitive documents
+- Role-based access control
+- Audit logging and compliance features
 
 ---
 

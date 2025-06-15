@@ -93,19 +93,17 @@ graph LR
     VIDEO --> INDEX
 ```
 
-### File Structure
+### Project Structure
 
 ```
 elibrary/
-├── pdf_books/                   # Input PDFs
-├── pdf_library_processor.py     # Main processor
-├── pdf_chat.py                  # Chat interface
-├── requirements.txt             # Dependencies
-├── memvid_out/                  # Output (excluded from git)
-│   ├── library.mp4              # Video index
-│   ├── library_index.json       # Enhanced metadata
-│   └── library_index.faiss      # Vector index
-└── README.md
+├── pdf_books/              # Input PDFs
+├── pdf_library_processor.py # Main processor
+├── pdf_chat.py             # Chat interface
+├── memvid_out/            # Generated output
+│   ├── library.mp4        # Video index
+│   └── library_index.json # Metadata
+└── requirements.txt       # Dependencies
 ```
 
 ## Usage Examples
@@ -160,37 +158,23 @@ The system automatically detects and uses:
 
 ### Dependencies
 
-Core dependencies (see `requirements.txt`):
-- `memvid` - Video indexing library
-- `pymupdf` - PDF text extraction
-- `tiktoken` - Token-based chunking
-- `requests` - HTTP communication
-- `tqdm` - Progress tracking
+See `requirements.txt` for complete list. Key dependencies:
+- `memvid` - Video indexing
+- `pymupdf` - PDF processing  
+- `tiktoken` - Text chunking
+- `requests` - Ollama communication
 
-## Technical Details
+## Technical Overview
 
-### Processing Pipeline
+For detailed technical documentation, see [CLAUDE.md](CLAUDE.md).
 
-1. **PDF Text Extraction**: Uses PyMuPDF for high-quality text extraction with page tracking
-2. **Text Cleaning**: Removes encoding artifacts and formatting issues
-3. **Token-based Chunking**: Creates 500-token chunks with 15% overlap and PDF page references
-4. **Metadata Extraction**: Uses LLM to extract structured metadata
-5. **QR Code Generation**: Parallel generation of video frames
-6. **Index Building**: Creates searchable vector index with page citations
+### Key Technologies
 
-### Chunking Strategy
-
-- **Chunk Size**: 500 tokens (~2000 characters)
-- **Overlap**: 15% (75 tokens) for context continuity
-- **Boundary Detection**: Smart sentence boundary preservation
-- **Cross-page Chunks**: Additional chunks spanning page boundaries
-
-### Performance Optimizations
-
-- **Smart Skip**: Avoids reprocessing existing files
-- **Parallel QR Generation**: Multi-worker processing
-- **Warning Suppression**: Clean output without library warnings
-- **Progress Tracking**: Real-time processing feedback
+- **PyMuPDF**: High-quality PDF text extraction
+- **Ollama**: Local LLM for metadata extraction and chat
+- **MemVid**: Video-based indexing and QR code generation
+- **FAISS**: Vector similarity search
+- **Token-based Processing**: Optimal chunk sizes for RAG
 
 ## Troubleshooting
 
