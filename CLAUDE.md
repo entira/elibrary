@@ -5,11 +5,8 @@ This document contains development notes, technical implementation details, and 
 ## Quick Commands
 
 ```bash
-# Process PDF library with enhanced features
+# Process PDF library
 python3 pdf_library_processor.py --max-workers 8
-
-# Process with completely clean output (no warnings)
-python3 pdf_processor_quiet.py --max-workers 8
 
 # Chat with processed documents  
 python3 pdf_chat.py
@@ -148,8 +145,6 @@ def monkey_patch_parallel_qr_generation(encoder, n_workers: int):
 elibrary/
 ├── pdf_library_processor.py     # Main processor with enhanced features
 ├── pdf_chat.py                  # Interactive chat interface
-├── pdf_processor_quiet.py       # Clean output wrapper
-├── pdf_process_clean.sh         # Shell script wrapper
 ├── requirements.txt             # Python dependencies
 ├── memvid_out/                  # Output directory
 │   ├── library.mp4              # Video index
@@ -166,17 +161,6 @@ elibrary/
 export PYTHONWARNINGS=ignore           # Suppress Python warnings
 export TF_CPP_MIN_LOG_LEVEL=3         # Suppress TensorFlow logs
 export TOKENIZERS_PARALLELISM=false   # Disable tokenizer warnings
-```
-
-### Command Line Arguments
-
-```bash
-# Processing options
---max-workers 8          # Set number of parallel workers
---force-reprocess        # Ignore existing processed files
-
-# Clean output
-python3 pdf_processor_quiet.py    # Completely suppress warnings
 ```
 
 ## Testing and Validation
@@ -237,22 +221,14 @@ opencv-python            # Image processing support
 ## Future Development Ideas
 
 ### Enhanced Processing
-- Multi-format document support (EPUB, DOCX, HTML)
+- Multi-format document support (EPUB, ...)
 - Real-time document updates and synchronization
 - Advanced semantic search capabilities
 - Document similarity analysis and clustering
 
 ### Infrastructure Improvements
 - CDN/S3 streaming for large libraries
-- Distributed processing across multiple nodes
 - Content encryption for sensitive documents
-- Web3 integration for decentralized access
-
-### User Experience
-- Web-based interface for document management
-- Mobile application support
-- Collaborative annotations and notes
-- Integration with external knowledge bases
 
 ### AI Integration
 - Model Context Protocol (MCP) server implementation
