@@ -18,6 +18,7 @@ import os
 import json
 import re
 import requests
+import warnings
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import pymupdf as fitz
@@ -105,11 +106,27 @@ class PDFLibraryProcessorV2:
         
         # Initialize embedder and encoder with parallel processing
         self.embedder = OllamaEmbedder()
-        # Use n_workers for MemvidEncoder to enable parallel QR generation
+        # Configure MemvidEncoder for parallel QR generation
         from multiprocessing import cpu_count
         encoder_workers = n_workers if n_workers else cpu_count()
-        self.encoder = MemvidEncoder(n_workers=encoder_workers)
-        print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers for parallel QR generation")
+        
+        # Configure memvid for parallel processing
+        config = {
+            'n_workers': encoder_workers,
+            'parallel_processing': True
+        }
+        
+        # Suppress MemvidEncoder LLM warnings during initialization
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                self.encoder = MemvidEncoder(config=config)
+                print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers for parallel QR generation")
+            except Exception as e:
+                # Fallback to default initialization if config not supported
+                self.encoder = MemvidEncoder()
+                print(f"⚠️ MemvidEncoder initialized without parallel config (fallback): {e}")
+                print(f"🔧 Using default MemvidEncoder configuration")
         
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
