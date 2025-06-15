@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """
-PDF Library Processor v2 with Enhanced Page Metadata
+PDF Library Processor v2 with Enhanced Page Metadata and Parallel QR Generation
 Processes PDF books with detailed page tracking for each chunk.
+
+Features:
+- Parallel QR generation using all CPU cores for significantly faster processing
+- Enhanced page metadata with cross-page context preservation
+- Token-based sliding window chunking for optimal RAG performance
+- Configurable worker count for QR generation
+
+Usage:
+    python3 pdf_library_processor.py                    # Use all CPU cores
+    python3 pdf_library_processor.py --max-workers 8   # Use 8 workers for QR generation
 """
 
 import os
@@ -88,14 +98,18 @@ class EnhancedChunk:
 class PDFLibraryProcessorV2:
     """Enhanced PDF processor with detailed page tracking."""
     
-    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2"):
+    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2", n_workers: int = None):
         self.pdf_dir = Path(pdf_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         
-        # Initialize embedder and encoder
+        # Initialize embedder and encoder with parallel processing
         self.embedder = OllamaEmbedder()
-        self.encoder = MemvidEncoder()
+        # Use n_workers for MemvidEncoder to enable parallel QR generation
+        from multiprocessing import cpu_count
+        encoder_workers = n_workers if n_workers else cpu_count()
+        self.encoder = MemvidEncoder(n_workers=encoder_workers)
+        print(f"🚀 MemvidEncoder initialized with {encoder_workers} workers for parallel QR generation")
         
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
@@ -566,7 +580,15 @@ class PDFLibraryProcessorV2:
 
 def main():
     """Main entry point."""
-    processor = PDFLibraryProcessorV2()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='PDF Library Processor V2 with Parallel QR Generation')
+    parser.add_argument('--max-workers', type=int, default=None,
+                       help='Maximum number of workers for parallel QR generation (default: cpu_count)')
+    
+    args = parser.parse_args()
+    
+    processor = PDFLibraryProcessorV2(n_workers=args.max_workers)
     processor.process_library()
 
 
