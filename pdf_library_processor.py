@@ -1,29 +1,56 @@
 #!/usr/bin/env python3
 """
-PDF Library Processor v2 with Enhanced Page Metadata and Parallel QR Generation
-Processes PDF books with detailed page tracking for each chunk.
+PDF Library Processor v2 with Enhanced Skip Optimization
+Processes PDF books with detailed page tracking and intelligent skip mechanism.
 
 Features:
-- Parallel QR generation using all CPU cores for significantly faster processing
-- Enhanced page metadata with cross-page context preservation
+- Smart skip mechanism - avoids reprocessing already processed PDFs
+- Enhanced page metadata with cross-page context preservation  
 - Token-based sliding window chunking for optimal RAG performance
-- Configurable worker count for QR generation
+- Clean warning suppression for faster testing
+- No pickle errors from simplified implementation
 
 Usage:
-    python3 pdf_library_processor.py                    # Use all CPU cores
-    python3 pdf_library_processor.py --max-workers 8   # Use 8 workers for QR generation
+    python3 pdf_library_processor.py                       # Skip already processed PDFs  
+    python3 pdf_library_processor.py --force-reprocess     # Force reprocess all PDFs
+    python3 pdf_library_processor.py --max-workers 8       # Use 8 workers for processing
+    
+    For completely clean output without any warnings:
+    python3 pdf_processor_quiet.py --max-workers 8         # Uses quiet wrapper
 """
 
+# Suppress ALL warnings and output before any imports
+import warnings
+import sys
 import os
+from io import StringIO
+import contextlib
+
+warnings.filterwarnings("ignore")
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+os.environ['PYTHONWARNINGS'] = 'ignore'
+
+# Capture and suppress stdout during problematic imports
+def suppress_stdout():
+    return contextlib.redirect_stdout(StringIO())
+
+def suppress_stderr():  
+    return contextlib.redirect_stderr(StringIO())
+
 import json
 import re
 import requests
-import warnings
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import pymupdf as fitz
 from tqdm import tqdm
-from memvid import MemvidEncoder
+
+# Suppress ALL output during memvid import
+with suppress_stdout(), suppress_stderr(), warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from memvid import MemvidEncoder
+
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 import tiktoken
@@ -67,130 +94,135 @@ class OllamaEmbedder:
         return embeddings
 
 
-class ParallelMemvidEncoder(MemvidEncoder):
-    """MemvidEncoder with parallel QR generation capability."""
+def generate_single_qr_global(args):
+    """Global function for QR generation to avoid pickle issues."""
+    # Aggressively suppress ALL warnings in worker processes
+    import warnings
+    warnings.filterwarnings("ignore")
+    import os
+    import sys
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
     
-    def __init__(self, n_workers: int = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.n_workers = n_workers or cpu_count()
-        
-    def build_video_parallel(self, output_file: str, index_file: str, **kwargs) -> Dict[str, Any]:
-        """Build video with parallel QR generation."""
-        import tempfile
-        import shutil
-        from pathlib import Path
-        import json
-        import cv2
+    # Redirect stderr to suppress any remaining warnings
+    import contextlib
+    with contextlib.redirect_stderr(open(os.devnull, 'w')):
+        frame_num, chunk_text, frames_dir_str, config = args
+    try:
         import qrcode
-        from PIL import Image
-        import numpy as np
+        import json
+        import os
         
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
-                frames_dir = temp_path / "frames"
-                frames_dir.mkdir()
-                
-                print(f"🚀 Generating {len(self.chunks)} QR frames using {self.n_workers} workers...")
-                
-                # Generate QR frames in parallel
-                self._generate_qr_frames_parallel(frames_dir)
-                
-                # Build video from frames (sequential, but fast)
-                self._build_video_from_frames(frames_dir, output_file, **kwargs)
-                
-                # Create index file
-                self._create_index_file(index_file)
-                
-                return {"status": "success", "frames": len(self.chunks)}
-                
-        except Exception as e:
-            print(f"Error in parallel video generation: {e}")
-            # Fallback to original method
-            return super().build_video(output_file, index_file, **kwargs)
-    
-    def _generate_qr_frames_parallel(self, frames_dir: Path):
-        """Generate QR frames in parallel using ProcessPoolExecutor."""
+        chunk_data = {"id": frame_num, "text": chunk_text, "frame": frame_num}
         
-        def generate_single_qr(args):
-            frame_num, chunk_text, frames_dir_str = args
+        # Use memvid's QR config with auto-truncation for long chunks
+        qr_config = config.get('qr', {})
+        
+        # Try with progressively shorter text if QR version exceeds 40
+        original_text = chunk_text
+        for max_chars in [len(chunk_text), 2800, 2400, 2000, 1600, 1200]:
             try:
-                import qrcode
-                from PIL import Image
-                import json
-                import os
-                
-                chunk_data = {"id": frame_num, "text": chunk_text, "frame": frame_num}
-                
-                # Create QR code
-                qr = qrcode.QRCode(version=35, error_correction=qrcode.constants.ERROR_CORRECT_M, 
-                                 box_size=5, border=3)
+                if max_chars < len(chunk_text):
+                    chunk_data["text"] = chunk_text[:max_chars] + "..."
+                else:
+                    chunk_data["text"] = chunk_text
+                    
+                qr = qrcode.QRCode(
+                    version=1,  # Let it auto-scale but with limit
+                    error_correction=getattr(qrcode.constants, f"ERROR_CORRECT_{qr_config.get('error_correction', 'M')}"),
+                    box_size=qr_config.get('box_size', 5),
+                    border=qr_config.get('border', 3)
+                )
                 qr.add_data(json.dumps(chunk_data))
                 qr.make(fit=True)
                 
-                # Create QR image
-                qr_image = qr.make_image(fill_color="black", back_color="white")
-                
-                # Save frame
-                frame_path = os.path.join(frames_dir_str, f"frame_{frame_num:06d}.png")
-                qr_image.save(frame_path)
-                
-                return frame_num
-            except Exception as e:
-                print(f"Error generating QR frame {frame_num}: {e}")
-                return None
+                # Check if version is acceptable
+                if qr.version <= 40:
+                    break
+            except Exception:
+                continue
+        else:
+            # Fallback: use minimal data
+            chunk_data["text"] = f"[Chunk {frame_num} - Text too long for QR]"
+            qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M)
+            qr.add_data(json.dumps(chunk_data))
+            qr.make(fit=True)
+        
+        qr_image = qr.make_image(
+            fill_color=qr_config.get('fill_color', 'black'),
+            back_color=qr_config.get('back_color', 'white')
+        )
+        
+        frame_path = os.path.join(frames_dir_str, f"frame_{frame_num:06d}.png")
+        qr_image.save(frame_path)
+        
+        return frame_num
+    except Exception as e:
+        print(f"Error generating QR frame {frame_num}: {e}")
+        return None
+
+
+def monkey_patch_parallel_qr_generation(encoder, n_workers: int):
+    """Monkey patch MemvidEncoder to use parallel QR generation."""
+    import types
+    from pathlib import Path
+    from concurrent.futures import ProcessPoolExecutor
+    
+    def _generate_qr_frames_parallel(self, temp_dir: Path, show_progress: bool = True) -> Path:
+        """Generate QR frames in parallel using ProcessPoolExecutor."""
+        frames_dir = temp_dir / "frames"
+        frames_dir.mkdir()
         
         # Prepare data for parallel processing
-        chunk_tasks = [(i, chunk, str(frames_dir)) for i, chunk in enumerate(self.chunks)]
+        chunk_tasks = [(i, chunk, str(frames_dir), self.config) 
+                      for i, chunk in enumerate(self.chunks)]
         
-        # Generate QR frames in parallel
-        with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
-            list(tqdm(executor.map(generate_single_qr, chunk_tasks), 
-                     total=len(chunk_tasks), desc="Generating QR frames"))
+        print(f"🚀 Generating {len(chunk_tasks)} QR frames using {n_workers} workers...")
+        
+        # Generate QR frames in parallel using global function
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            if show_progress:
+                # Show progress with suppressed worker stderr
+                import contextlib
+                original_stderr = sys.stderr
+                try:
+                    # Temporarily suppress stderr only for worker warnings, keep tqdm visible
+                    with open(os.devnull, 'w') as devnull:
+                        sys.stderr = devnull
+                        results = list(tqdm(executor.map(generate_single_qr_global, chunk_tasks), 
+                                           total=len(chunk_tasks), desc="Generating QR frames", file=sys.stdout))
+                finally:
+                    sys.stderr = original_stderr
+            else:
+                list(executor.map(generate_single_qr_global, chunk_tasks))
+        
+        return frames_dir
     
-    def _build_video_from_frames(self, frames_dir: Path, output_file: str, codec: str = 'h265', **kwargs):
-        """Build video from generated frames."""
-        import cv2
-        import numpy as np
-        
-        frame_files = sorted(frames_dir.glob("frame_*.png"))
-        if not frame_files:
-            raise ValueError("No QR frames generated")
-        
-        # Read first frame to get dimensions
-        first_frame = cv2.imread(str(frame_files[0]))
-        height, width, _ = first_frame.shape
-        
-        # Setup video writer
-        if codec == 'h265':
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        else:
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            
-        out = cv2.VideoWriter(output_file, fourcc, 1.0, (width, height))
-        
-        print(f"🎥 Building video from {len(frame_files)} frames...")
-        for frame_file in tqdm(frame_files, desc="Building video"):
-            frame = cv2.imread(str(frame_file))
-            out.write(frame)
-        
-        out.release()
+    # Replace the original method with our parallel version
+    encoder._generate_qr_frames = types.MethodType(_generate_qr_frames_parallel, encoder)
+    encoder.n_workers = n_workers
     
-    def _create_index_file(self, index_file: str):
-        """Create index file with metadata."""
-        metadata = []
-        for i, chunk in enumerate(self.chunks):
-            metadata.append({
-                "id": i,
-                "text": chunk,
-                "frame": i,
-                "length": len(chunk)
-            })
+    return encoder
+
+
+def get_processed_pdfs_from_index(index_path: Path) -> set:
+    """Get list of already processed PDFs from existing index."""
+    try:
+        if not index_path.exists():
+            return set()
         
-        index_data = {"metadata": metadata}
+        with open(index_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        with open(index_file, 'w', encoding='utf-8') as f:
-            json.dump(index_data, f, indent=2, ensure_ascii=False)
+        processed_pdfs = set()
+        if 'enhanced_stats' in data and 'files' in data['enhanced_stats']:
+            for filename in data['enhanced_stats']['files'].keys():
+                processed_pdfs.add(filename)
+        
+        return processed_pdfs
+    except Exception as e:
+        print(f"Warning: Could not read existing index: {e}")
+        return set()
 
 
 class EnhancedChunk:
@@ -227,45 +259,30 @@ class EnhancedChunk:
 class PDFLibraryProcessorV2:
     """Enhanced PDF processor with detailed page tracking."""
     
-    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2", n_workers: int = None):
+    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2", n_workers: int = None, force_reprocess: bool = False):
         self.pdf_dir = Path(pdf_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
+        self.force_reprocess = force_reprocess
         
-        # Set environment variables for parallel processing
-        from multiprocessing import cpu_count
+        # Set worker count
         encoder_workers = n_workers if n_workers else cpu_count()
-        os.environ['MEMVID_WORKERS'] = str(encoder_workers)
-        os.environ['OMP_NUM_THREADS'] = str(encoder_workers)
         
-        # Initialize embedder and encoder with parallel processing
+        # Initialize embedder and encoder
         self.embedder = OllamaEmbedder()
-        # Configure MemvidEncoder for parallel QR generation
         
-        # Configure memvid for parallel processing
-        config = {
-            'retrieval': {
-                'max_workers': encoder_workers
-            },
-            'performance': {
-                'parallel_qr_generation': True,
-                'qr_workers': encoder_workers
-            }
-        }
-        
-        # Initialize our custom parallel encoder
+        # Suppress all warnings during MemvidEncoder initialization
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            try:
-                # Use our custom ParallelMemvidEncoder for true parallel QR generation
-                self.encoder = ParallelMemvidEncoder(n_workers=encoder_workers)
-                print(f"🚀 ParallelMemvidEncoder initialized with {encoder_workers} workers for parallel QR generation")
-                self.use_parallel_encoding = True
-            except Exception as e:
-                # Fallback to standard MemvidEncoder
-                self.encoder = MemvidEncoder()
-                print(f"⚠️ Fallback to standard MemvidEncoder: {e}")
-                self.use_parallel_encoding = False
+            self.encoder = MemvidEncoder()
+            
+            # Apply monkey patch for parallel QR generation
+            self.encoder = monkey_patch_parallel_qr_generation(self.encoder, encoder_workers)
+            print(f"🚀 MemvidEncoder configured with {encoder_workers} workers for parallel QR generation")
+        
+        # Get already processed PDFs if not forcing reprocess
+        index_path = self.output_dir / "library_v2_index.json"
+        self.processed_pdfs = get_processed_pdfs_from_index(index_path) if not force_reprocess else set()
         
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
@@ -546,36 +563,37 @@ class PDFLibraryProcessorV2:
     def process_pdf_enhanced(self, pdf_path: Path) -> bool:
         """Process single PDF with enhanced chunking."""
         try:
-            print(f"Processing: {pdf_path.name}")
+            # Check if already processed is handled in process_library now
             
             # Extract text with page mapping
+            print(f"  📄 Extracting text from {pdf_path.name}...")
             page_texts, num_pages = self.extract_text_with_pages(pdf_path)
             
             if not page_texts:
-                print(f"Warning: No text extracted from {pdf_path.name}")
+                print(f"  ❌ Warning: No text extracted from {pdf_path.name}")
                 return False
             
             # Create enhanced chunks
+            print(f"  🔧 Creating enhanced chunks...")
             enhanced_chunks = self.create_enhanced_chunks(page_texts)
             
             if not enhanced_chunks:
-                print(f"Warning: No chunks created from {pdf_path.name}")
+                print(f"  ❌ Warning: No chunks created from {pdf_path.name}")
                 return False
             
-            print(f"  - Pages: {num_pages}")
-            print(f"  - Enhanced chunks: {len(enhanced_chunks)}")
+            print(f"  📊 Pages: {num_pages}, Enhanced chunks: {len(enhanced_chunks)}")
             
             # Get sample text for metadata extraction (first 10 chunks)
             sample_chunks = enhanced_chunks[:10]
             sample_text = "\n".join([chunk.text for chunk in sample_chunks])
             
             # Extract metadata using Ollama
-            print("  - Extracting metadata...")
+            print(f"  🤖 Extracting metadata...")
             metadata = self.extract_metadata_with_ollama(sample_text)
             
-            print(f"  - Title: {metadata['title'][:60]}{'...' if len(metadata['title']) > 60 else ''}")
-            print(f"  - Authors: {metadata['authors'][:50]}{'...' if len(metadata['authors']) > 50 else ''}")
-            print(f"  - Year: {metadata['year']}")
+            print(f"  📚 Title: {metadata['title'][:60]}{'...' if len(metadata['title']) > 60 else ''}")
+            print(f"  👤 Authors: {metadata['authors'][:50]}{'...' if len(metadata['authors']) > 50 else ''}")
+            print(f"  📅 Year: {metadata['year']}")
             
             # Add chunks to memvid with enhanced metadata
             for chunk in enhanced_chunks:
@@ -598,7 +616,7 @@ class PDFLibraryProcessorV2:
                     self.encoder._enhanced_metadata = []
                 self.encoder._enhanced_metadata.append(chunk_metadata)
             
-            print(f"  - Added {len(enhanced_chunks)} chunks with page references")
+            print(f"  ✅ Added {len(enhanced_chunks)} chunks with page references")
             return True
             
         except Exception as e:
@@ -608,13 +626,10 @@ class PDFLibraryProcessorV2:
     def create_enhanced_index(self, video_path: str, index_path: str):
         """Create enhanced index with detailed metadata."""
         try:
-            # Build video using parallel encoding if available
+            # Build video with suppressed warnings
             print("Building video...")
-            if self.use_parallel_encoding and hasattr(self.encoder, 'build_video_parallel'):
-                print("🚀 Using parallel QR generation...")
-                result = self.encoder.build_video_parallel(video_path, index_path)
-            else:
-                print("🔧 Using standard video generation...")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
                 result = self.encoder.build_video(video_path, index_path)
             
             # Enhance the index with our metadata
@@ -709,28 +724,46 @@ class PDFLibraryProcessorV2:
         print()
         
         processed_count = 0
+        skipped_count = 0
         
-        # Process each PDF
-        for pdf_path in tqdm(pdf_files, desc="Processing PDFs"):
-            if self.process_pdf_enhanced(pdf_path):
+        # Process each PDF with progress tracking
+        for i, pdf_path in enumerate(pdf_files, 1):
+            print(f"\n[{i}/{len(pdf_files)}] Processing: {pdf_path.name}")
+            if pdf_path.name in self.processed_pdfs:
+                print(f"  ✅ Skipped (already processed)")
+                skipped_count += 1
+            elif self.process_pdf_enhanced(pdf_path):
                 processed_count += 1
         
-        if processed_count == 0:
+        # Check if we have any content to work with
+        video_path = str(self.output_dir / "library_v2.mp4")
+        index_path = str(self.output_dir / "library_v2_index.json")
+        
+        if processed_count == 0 and skipped_count == 0:
             print("No PDFs were successfully processed!")
             return
+        elif processed_count == 0 and skipped_count > 0:
+            # All PDFs were skipped, check if video already exists
+            if Path(video_path).exists() and Path(index_path).exists():
+                print(f"\n✅ All {skipped_count} PDFs already processed!")
+                print(f"🎥 Existing video: {self.output_dir / 'library_v2.mp4'}")
+                print(f"📋 Existing index: {self.output_dir / 'library_v2_index.json'}")
+                print(f"📄 Use --force-reprocess to regenerate video")
+                return
+            else:
+                print(f"Warning: {skipped_count} PDFs were skipped but no video exists!")
+                print("Use --force-reprocess to regenerate video")
+                return
         
         print(f"\nBuilding enhanced video index...")
-        print(f"Processed {processed_count} PDFs successfully")
+        print(f"Processed {processed_count} new PDFs (skipped {skipped_count})")
         
-        # Build final video and enhanced index
+        # Build final video and enhanced index (only if we processed new PDFs)
         try:
-            video_path = str(self.output_dir / "library_v2.mp4")
-            index_path = str(self.output_dir / "library_v2_index.json")
-            
             self.create_enhanced_index(video_path, index_path)
             
             print(f"\n✅ SUCCESS!")
-            print(f"📚 Processed {processed_count} PDF books")
+            print(f"📚 Processed {processed_count} PDF books (skipped {skipped_count})")
             print(f"🎥 Enhanced video: {self.output_dir / 'library_v2.mp4'}")
             print(f"📋 Enhanced index: {self.output_dir / 'library_v2_index.json'}")
             print(f"📄 Each chunk includes detailed page references!")
@@ -742,20 +775,27 @@ class PDFLibraryProcessorV2:
 def main():
     """Main entry point."""
     import argparse
+    import sys
+    import io
     
-    # Suppress all LLM-related warnings at startup
-    warnings.filterwarnings("ignore", message=".*OpenAI library not available.*")
-    warnings.filterwarnings("ignore", message=".*Google Generative AI library not available.*")
-    warnings.filterwarnings("ignore", message=".*Anthropic library not available.*")
-    warnings.filterwarnings("ignore", message=".*LLM client.*")
+    # Aggressively suppress ALL warnings and stderr
+    warnings.filterwarnings("ignore")
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
     
-    parser = argparse.ArgumentParser(description='PDF Library Processor V2 with Parallel QR Generation')
+    # Additional environment variables to suppress warnings
+    os.environ['PYTHONWARNINGS'] = 'ignore'
+    os.environ['MEMVID_QUIET'] = '1'
+    
+    parser = argparse.ArgumentParser(description='PDF Library Processor V2 with Skip Optimization')
     parser.add_argument('--max-workers', type=int, default=None,
-                       help='Maximum number of workers for parallel QR generation (default: cpu_count)')
+                       help='Maximum number of workers for parallel processing (default: auto)')
+    parser.add_argument('--force-reprocess', action='store_true',
+                       help='Force reprocessing of all PDFs (ignore existing index)')
     
     args = parser.parse_args()
     
-    processor = PDFLibraryProcessorV2(n_workers=args.max_workers)
+    processor = PDFLibraryProcessorV2(n_workers=args.max_workers, force_reprocess=args.force_reprocess)
     processor.process_library()
 
 
