@@ -56,7 +56,7 @@ python3 pdf_chat.py
 
 - **Token-based Chunking**: Smart sliding window chunking (500 tokens, 15% overlap)
 - **Enhanced Metadata**: Automatic extraction of titles, authors, publishers, publication years
-- **Page-accurate Citations**: Precise page references in chat responses
+- **PDF Page Citations**: Page references using PDF file page numbers in chat responses
 - **Cross-page Context**: Context preservation across page boundaries
 - **Smart Skip Processing**: Avoids reprocessing already processed PDFs
 - **Parallel Processing**: Multi-worker QR generation for faster processing
@@ -130,7 +130,7 @@ python3 pdf_library_processor.py --max-workers 8
 
 The chat system provides:
 - Interactive Q&A with your PDF library
-- Automatic citations with book titles and page numbers
+- Automatic citations with book titles and PDF page numbers
 - Context-aware responses using RAG
 - Real-time search across all processed documents
 
@@ -169,12 +169,12 @@ Core dependencies (see `requirements.txt`):
 
 ### Processing Pipeline
 
-1. **PDF Text Extraction**: Uses PyMuPDF for high-quality text extraction
+1. **PDF Text Extraction**: Uses PyMuPDF for high-quality text extraction with page tracking
 2. **Text Cleaning**: Removes encoding artifacts and formatting issues
-3. **Token-based Chunking**: Creates 500-token chunks with 15% overlap
+3. **Token-based Chunking**: Creates 500-token chunks with 15% overlap and PDF page references
 4. **Metadata Extraction**: Uses LLM to extract structured metadata
 5. **QR Code Generation**: Parallel generation of video frames
-6. **Index Building**: Creates searchable vector index
+6. **Index Building**: Creates searchable vector index with page citations
 
 ### Chunking Strategy
 

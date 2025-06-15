@@ -40,9 +40,9 @@ Main processing class with enhanced features:
 #### Citation System
 Advanced citation engine providing:
 - Book title citations instead of generic context numbers
-- Accurate page references accounting for unnumbered front matter
-- Smart page number detection with pattern matching
+- PDF page references for consistent navigation
 - Enhanced metadata display in chat interface
+- Automatic source attribution in search and chat responses
 
 #### Token-based Chunking
 Optimized chunking strategy:
