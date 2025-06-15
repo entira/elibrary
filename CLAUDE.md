@@ -67,6 +67,272 @@ def _generate_qr_frames(self, temp_dir: Path, show_progress: bool = True):
 - **Existing infrastructure**: memvid already imports ProcessPoolExecutor
 - **Implementation**: Fork memvid package and implement parallel QR generation
 
+## 🎯 Future Architecture Vision
+
+### Complete System Architecture
+
+The eLibrary system is evolving into a comprehensive, secure, and scalable document processing platform with the following architecture:
+
+```mermaid
+flowchart TB
+    subgraph "📥 Input Layer"
+        PDF[📄 PDF Documents]
+        CONFIG[⚙️ Configuration Files]
+        KEYS[🔑 Encryption Keys]
+    end
+    
+    subgraph "🔄 Processing Pipeline"
+        EXTRACT[🔧 PyMuPDF Text Extraction]
+        CLEAN[🧹 Text Cleaning & Normalization]
+        CHUNK[🔢 Token-Based Chunking]
+        META[📊 AI Metadata Extraction]
+        ENCRYPT[🔐 AES-256-GCM Encryption]
+        QR[📱 QR Code Generation]
+        VIDEO[🎥 Video Assembly]
+    end
+    
+    subgraph "☁️ Storage & Distribution"
+        S3[🪣 AWS S3 Storage]
+        CDN[🌍 CloudFront CDN]
+        CACHE[💾 Local Cache]
+    end
+    
+    subgraph "🔒 Security Layer"
+        WEB3[🌐 Web3 Key Derivation]
+        TOR[🕸️ Tor Hidden Service]
+        AUTH[🛡️ Authentication Layer]
+    end
+    
+    subgraph "🌐 Access Interfaces"
+        WEBAPP[🌍 Web3 + Tor Application]
+        MCP[🤖 MCP Server]
+        API[📡 REST API]
+        CHAT[💬 Interactive Chat]
+    end
+    
+    subgraph "🛠️ Client Applications"
+        CLAUDE[🧠 Claude Desktop Integration]
+        VSCODE[📝 VS Code Extension]
+        CLI[⌨️ CLI Tools]
+        BROWSER[🌐 Anonymous Browser Access]
+    end
+    
+    %% Flow connections
+    PDF --> EXTRACT
+    EXTRACT --> CLEAN
+    CLEAN --> CHUNK
+    CHUNK --> META
+    META --> ENCRYPT
+    ENCRYPT --> QR
+    QR --> VIDEO
+    
+    VIDEO --> S3
+    S3 --> CDN
+    CDN --> CACHE
+    
+    KEYS --> WEB3
+    WEB3 --> AUTH
+    TOR --> WEBAPP
+    
+    CDN --> WEBAPP
+    CDN --> MCP
+    CDN --> API
+    CDN --> CHAT
+    
+    MCP --> CLAUDE
+    MCP --> VSCODE
+    MCP --> CLI
+    WEBAPP --> BROWSER
+    
+    %% Styling
+    classDef input fill:#e3f2fd
+    classDef process fill:#f3e5f5  
+    classDef storage fill:#e8f5e8
+    classDef security fill:#fff3e0
+    classDef access fill:#fce4ec
+    classDef client fill:#f1f8e9
+    
+    class PDF,CONFIG,KEYS input
+    class EXTRACT,CLEAN,CHUNK,META,ENCRYPT,QR,VIDEO process
+    class S3,CDN,CACHE storage
+    class WEB3,TOR,AUTH security
+    class WEBAPP,MCP,API,CHAT access
+    class CLAUDE,VSCODE,CLI,BROWSER client
+```
+
+## 🚀 Planned Implementation Phases
+
+### Phase 1: Cloud Infrastructure (Issues #11)
+**Timeline**: Q1 2025
+**Focus**: Scalability and Performance
+
+#### CDN/S3 Streaming Implementation
+- **HTTP Range Requests**: Stream video frames on-demand
+- **Multi-CDN Support**: AWS S3, CloudFront, generic HTTP servers
+- **Authentication**: Bearer tokens, Basic Auth, IAM credentials
+- **Performance Target**: 95%+ bandwidth reduction vs full download
+
+```python
+# Implementation example
+class StreamingMemvidChat:
+    def __init__(self, video_url: str, auth_headers: dict = None):
+        self.video_url = video_url
+        self.auth_headers = auth_headers
+        
+    def _stream_frame(self, frame_num: int) -> bytes:
+        start_byte, end_byte = self._calculate_frame_range(frame_num)
+        headers = {**self.auth_headers, 'Range': f'bytes={start_byte}-{end_byte}'}
+        response = requests.get(self.video_url, headers=headers)
+        return response.content
+```
+
+### Phase 2: Security & Encryption (Issue #12)
+**Timeline**: Q2 2025
+**Focus**: Privacy and Data Protection
+
+#### QR Content Encryption
+- **AES-256-GCM**: Military-grade authenticated encryption
+- **Zero-Knowledge Architecture**: Server cannot decrypt content
+- **Key Management**: PBKDF2 derivation, secure key storage
+- **Streaming Compatibility**: Preserves video structure for CDN
+
+```python
+# Encryption workflow
+def encrypt_chunk(text: str, key: bytes) -> dict:
+    aead = AESGCM(key)
+    nonce = os.urandom(12)
+    ciphertext = aead.encrypt(nonce, text.encode(), None)
+    
+    return {
+        "metadata": {"id": chunk_id, "length": len(text)},  # Public
+        "content": {
+            "nonce": base64.b64encode(nonce).decode(),
+            "data": base64.b64encode(ciphertext).decode()   # Encrypted
+        }
+    }
+```
+
+### Phase 3: Anonymous Access (Issue #13)
+**Timeline**: Q3 2025
+**Focus**: Privacy and Anonymity
+
+#### Web3 + Tor Integration
+- **Tor Hidden Service**: .onion domain for anonymous access
+- **Web3 Authentication**: Crypto wallet-based key derivation
+- **Client-Side Decryption**: Browser-based cryptography
+- **No External Dependencies**: Fully self-contained for Tor
+
+```javascript
+// Web3 key derivation in browser
+class Web3KeyManager {
+    async deriveEncryptionKey(privateKey, libraryId) {
+        const combined = `${privateKey}:${libraryId}:memvid:v1`;
+        return await crypto.subtle.deriveBits({
+            name: 'PBKDF2',
+            salt: new TextEncoder().encode('memvid-web3-salt'),
+            iterations: 100000,
+            hash: 'SHA-256'
+        }, keyMaterial, 256);
+    }
+}
+```
+
+### Phase 4: AI Integration (Issue #14)
+**Timeline**: Q4 2025
+**Focus**: Developer Experience and AI Enhancement
+
+#### MCP Server Implementation
+- **Model Context Protocol**: Standard AI assistant integration
+- **Technical Documentation**: Code examples, API references
+- **IDE Integration**: VS Code, Claude Desktop plugins
+- **Real-time Q&A**: Fast development workflow responses
+
+```python
+# MCP tool implementation
+@mcp_server.tool("search_docs")
+async def search_docs(query: str, library: str, top_k: int = 5):
+    """Search technical documentation with encrypted content"""
+    chat = get_encrypted_library(library)
+    results = await chat.search_context(query, top_k=top_k)
+    return format_results_with_citations(results)
+```
+
+## 🎯 Security Architecture Deep Dive
+
+### Encryption Flow
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant W as Web3 Wallet
+    participant B as Browser
+    participant S as Server
+    participant C as CDN
+    
+    U->>W: Provide Private Key
+    W->>B: Derive Encryption Key
+    B->>S: Request Encrypted Content
+    S->>C: Fetch Video Frames
+    C->>S: Return Encrypted QR Data
+    S->>B: Forward Encrypted Data
+    B->>B: Decrypt with Derived Key
+    B->>U: Display Decrypted Content
+    
+    Note over S,C: Server never sees decrypted content
+    Note over B: All decryption happens client-side
+```
+
+### Key Management Strategy
+1. **Deterministic Derivation**: Keys derived from wallet + library ID
+2. **No Server Storage**: Server never stores or sees encryption keys
+3. **Perfect Forward Secrecy**: Each library has unique encryption
+4. **Key Rotation**: Support for versioned encryption schemes
+
+## 📊 Performance Optimization Roadmap
+
+### Current Bottlenecks Identified
+1. **QR Generation**: 80%+ of processing time (sequential)
+2. **PDF Extraction**: Can benefit from parallel processing
+3. **Metadata Extraction**: Ollama API calls are blocking
+4. **Index Building**: Memory-intensive for large libraries
+
+### Optimization Strategies
+```mermaid
+gantt
+    title Performance Optimization Timeline
+    dateFormat  YYYY-MM-DD
+    section QR Generation
+    Parallel QR Processing     :active, qr1, 2024-12-15, 30d
+    Memory Optimization        :qr2, after qr1, 15d
+    
+    section PDF Processing  
+    Multi-PDF Parallel         :pdf1, 2024-12-15, 20d
+    Streaming Extraction       :pdf2, after pdf1, 25d
+    
+    section Infrastructure
+    CDN Implementation         :cdn1, 2025-01-01, 45d
+    Caching Strategy          :cache1, after cdn1, 20d
+    
+    section Security
+    Encryption Integration     :enc1, 2025-02-01, 30d
+    Key Management            :key1, after enc1, 15d
+```
+
+## 🔧 Development Workflow Integration
+
+### Current Tools Enhancement
+- **pdf_chat.py**: Enhanced with streaming and encryption
+- **pdf_library_processor.py**: Parallel processing and QR optimization
+- **GitHub Actions**: Automated testing and deployment
+- **Documentation**: Real-time updates with implementation progress
+
+### Future Tool Additions
+- **memvid_mcp_server.py**: MCP protocol implementation
+- **web3_tor_app.py**: Anonymous web application
+- **streaming_client.py**: CDN-enabled client library
+- **encryption_tools.py**: Key management utilities
+
+This architecture represents a complete evolution from a simple PDF processor to an enterprise-grade, privacy-focused, scalable document intelligence platform.
+
 ## Issue #2 Resolution - PyMuPDF Implementation
 
 ### Problem Solved
