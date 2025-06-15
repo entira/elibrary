@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """
-PDF Library Processor v2 with Enhanced Page Metadata
-Processes PDF books with detailed page tracking for each chunk.
+PDF Library Processor v2 with Enhanced Page Metadata and Parallel Processing
+Processes PDF books with detailed page tracking for each chunk, featuring:
+- Parallel PDF processing for improved performance  
+- Thread-safe operations with rate limiting
+- MemvidEncoder with n_workers for optimal QR generation
+- Configurable concurrency settings
+
+Usage:
+    python3 pdf_library_processor.py                    # Default parallel processing
+    python3 pdf_library_processor.py --no-parallel     # Disable parallel processing  
+    python3 pdf_library_processor.py --max-workers 8   # Custom worker count
+    python3 pdf_library_processor.py --ollama-concurrent 3  # Custom Ollama concurrency
 """
 
 import os
@@ -14,6 +24,10 @@ import pymupdf as fitz
 from tqdm import tqdm
 from memvid import MemvidEncoder
 import tiktoken
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import cpu_count
 
 
 class OllamaEmbedder:
@@ -88,14 +102,23 @@ class EnhancedChunk:
 class PDFLibraryProcessorV2:
     """Enhanced PDF processor with detailed page tracking."""
     
-    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2"):
+    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2", 
+                 enable_parallel: bool = True, max_workers: Optional[int] = None, 
+                 ollama_max_concurrent: int = 2):
         self.pdf_dir = Path(pdf_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         
-        # Initialize embedder and encoder
+        # Parallel processing configuration
+        self.enable_parallel = enable_parallel
+        self.max_workers = max_workers or min(4, cpu_count())
+        self.ollama_max_concurrent = ollama_max_concurrent
+        
+        # Initialize embedder and encoder with parallel processing
         self.embedder = OllamaEmbedder()
-        self.encoder = MemvidEncoder()
+        # Use n_workers for MemvidEncoder as suggested in issue comment
+        encoder_workers = cpu_count() if enable_parallel else 1
+        self.encoder = MemvidEncoder(n_workers=encoder_workers)
         
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
@@ -105,60 +128,69 @@ class PDFLibraryProcessorV2:
         self.overlap_percentage = 0.15  # 15% overlap between chunks
         self.overlap_tokens = int(self.chunk_size_tokens * self.overlap_percentage)  # 75 tokens
         
+        # Thread safety for parallel processing
+        self.thread_lock = threading.Lock()
+        self.ollama_semaphore = threading.Semaphore(ollama_max_concurrent)
+        
     def extract_metadata_with_ollama(self, sample_text: str) -> Dict[str, str]:
-        """Extract metadata using Ollama mistral:latest model."""
-        try:
-            prompt = f"Extract JSON with keys: title, authors, publishers, year, doi from this text:\n\n{sample_text}\n\nReturn only valid JSON."
-            
-            response = requests.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": "mistral:latest",
-                    "prompt": prompt,
-                    "options": {"temperature": 0.1}
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-            
-            # Parse streaming response
-            response_text = ""
-            for line in response.text.strip().split('\n'):
-                if line:
-                    try:
-                        chunk = json.loads(line)
-                        if "response" in chunk:
-                            response_text += chunk["response"]
-                    except json.JSONDecodeError:
-                        continue
-            
-            # Try to extract JSON from response
+        """Extract metadata using Ollama mistral:latest model with rate limiting."""
+        # Use semaphore to limit concurrent Ollama requests
+        with self.ollama_semaphore:
             try:
-                # Look for JSON in the response
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    metadata = json.loads(json_match.group())
-                else:
-                    raise ValueError("No JSON found in response")
+                # Small delay to prevent overwhelming Ollama server
+                time.sleep(0.1)
+                
+                prompt = f"Extract JSON with keys: title, authors, publishers, year, doi from this text:\n\n{sample_text}\n\nReturn only valid JSON."
+                
+                response = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={
+                        "model": "mistral:latest",
+                        "prompt": prompt,
+                        "options": {"temperature": 0.1}
+                    },
+                    timeout=60
+                )
+                response.raise_for_status()
+                
+                # Parse streaming response
+                response_text = ""
+                for line in response.text.strip().split('\n'):
+                    if line:
+                        try:
+                            chunk = json.loads(line)
+                            if "response" in chunk:
+                                response_text += chunk["response"]
+                        except json.JSONDecodeError:
+                            continue
+                
+                # Try to extract JSON from response
+                try:
+                    # Look for JSON in the response
+                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                    if json_match:
+                        metadata = json.loads(json_match.group())
+                    else:
+                        raise ValueError("No JSON found in response")
+                        
+                    # Clean and validate metadata
+                    clean_metadata = {
+                        "title": str(metadata.get("title", "")).strip(),
+                        "authors": str(metadata.get("authors", "")).strip(),
+                        "publishers": str(metadata.get("publishers", "")).strip(),
+                        "year": self._extract_year(str(metadata.get("year", ""))),
+                        "doi": str(metadata.get("doi", "")).strip()
+                    }
                     
-                # Clean and validate metadata
-                clean_metadata = {
-                    "title": str(metadata.get("title", "")).strip(),
-                    "authors": str(metadata.get("authors", "")).strip(),
-                    "publishers": str(metadata.get("publishers", "")).strip(),
-                    "year": self._extract_year(str(metadata.get("year", ""))),
-                    "doi": str(metadata.get("doi", "")).strip()
-                }
-                
-                return clean_metadata
-                
-            except (json.JSONDecodeError, ValueError) as e:
-                print(f"Failed to parse JSON from Ollama response: {e}")
+                    return clean_metadata
+                    
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"Failed to parse JSON from Ollama response: {e}")
+                    return self._empty_metadata()
+                    
+            except Exception as e:
+                print(f"Error extracting metadata with Ollama: {e}")
                 return self._empty_metadata()
-                
-        except Exception as e:
-            print(f"Error extracting metadata with Ollama: {e}")
-            return self._empty_metadata()
     
     def _extract_year(self, year_text: str) -> str:
         """Extract first 4-digit year from text."""
@@ -420,6 +452,8 @@ class PDFLibraryProcessorV2:
                     **chunk.to_dict()  # Add enhanced chunk metadata
                 }
                 
+                # Thread-safe encoder access
+            with self.thread_lock:
                 # Add to encoder (we need to use add_chunks method)
                 self.encoder.add_chunks([chunk.text])
                 
@@ -514,8 +548,8 @@ class PDFLibraryProcessorV2:
             'files': files
         }
     
-    def process_library(self):
-        """Process entire PDF library with enhanced metadata."""
+    def process_library_parallel(self):
+        """Process entire PDF library with parallel processing."""
         if not self.pdf_dir.exists():
             print(f"Error: PDF directory {self.pdf_dir} does not exist!")
             return
@@ -531,14 +565,47 @@ class PDFLibraryProcessorV2:
         print(f"Chunk size: {self.chunk_size_tokens} tokens (~{self.chunk_size_tokens * 4} chars)")
         print(f"Overlap: {self.overlap_tokens} tokens ({self.overlap_percentage*100:.0f}%)")
         print(f"Chunking method: Token-based sliding window")
+        print(f"Parallel processing: {'Enabled' if self.enable_parallel else 'Disabled'}")
+        if self.enable_parallel:
+            print(f"Max workers: {self.max_workers} PDFs, {self.ollama_max_concurrent} Ollama requests")
+            print(f"MemvidEncoder workers: {cpu_count()}")
         print()
         
         processed_count = 0
         
-        # Process each PDF
-        for pdf_path in tqdm(pdf_files, desc="Processing PDFs"):
-            if self.process_pdf_enhanced(pdf_path):
-                processed_count += 1
+        if self.enable_parallel and len(pdf_files) > 1:
+            # Parallel processing
+            print(f"🚀 Processing {len(pdf_files)} PDFs in parallel...")
+            
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                # Submit all PDF processing tasks
+                future_to_pdf = {
+                    executor.submit(self.process_pdf_enhanced, pdf): pdf 
+                    for pdf in pdf_files
+                }
+                
+                # Process results as they complete
+                for future in tqdm(as_completed(future_to_pdf), total=len(pdf_files), desc="Processing PDFs"):
+                    pdf_path = future_to_pdf[future]
+                    try:
+                        success = future.result()
+                        if success:
+                            processed_count += 1
+                    except Exception as e:
+                        print(f"Error processing {pdf_path.name}: {e}")
+        else:
+            # Sequential processing (fallback or single file)
+            print(f"📄 Processing {len(pdf_files)} PDFs sequentially...")
+            for pdf_path in tqdm(pdf_files, desc="Processing PDFs"):
+                if self.process_pdf_enhanced(pdf_path):
+                    processed_count += 1
+        
+        return processed_count
+    
+    def process_library(self):
+        """Process entire PDF library with enhanced metadata (main entry point)."""
+        # Use parallel processing method
+        processed_count = self.process_library_parallel()
         
         if processed_count == 0:
             print("No PDFs were successfully processed!")
@@ -566,7 +633,23 @@ class PDFLibraryProcessorV2:
 
 def main():
     """Main entry point."""
-    processor = PDFLibraryProcessorV2()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='PDF Library Processor V2 with Parallel Processing')
+    parser.add_argument('--no-parallel', action='store_true', 
+                       help='Disable parallel processing (use sequential)')
+    parser.add_argument('--max-workers', type=int, default=None,
+                       help='Maximum number of parallel PDF workers (default: min(4, cpu_count))')
+    parser.add_argument('--ollama-concurrent', type=int, default=2,
+                       help='Maximum concurrent Ollama requests (default: 2)')
+    
+    args = parser.parse_args()
+    
+    processor = PDFLibraryProcessorV2(
+        enable_parallel=not args.no_parallel,
+        max_workers=args.max_workers,
+        ollama_max_concurrent=args.ollama_concurrent
+    )
     processor.process_library()
 
 
