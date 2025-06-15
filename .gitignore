@@ -56,3 +56,4 @@ pdf_books/*.pdf
 # Temporary files
 *.tmp
 *.temp
+pdf_books
