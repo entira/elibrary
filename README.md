@@ -5,10 +5,9 @@ Advanced PDF processing system that converts document libraries into searchable 
 ## 🏗️ System Architecture
 
 ### Current Implementation
-Two-version processing pipeline with enhanced metadata extraction and cross-page context preservation:
+Advanced processing pipeline with enhanced metadata extraction and cross-page context preservation:
 
-- **V1 Processor**: Basic PDF chunking (512 chars, ~480 avg length)
-- **V2 Processor**: Token-based sliding window chunking (500 tokens, 15% overlap) with detailed page metadata
+- **Current Processor**: Token-based sliding window chunking (500 tokens, 15% overlap) with detailed page metadata
 
 ### Future Architecture Overview
 
@@ -20,7 +19,7 @@ graph TB
     end
     
     subgraph "Processing Pipeline"
-        PROC[🔧 PDF Processor V2]
+        PROC[🔧 PDF Processor]
         ENC[🔐 Encrypted QR Encoder]
         VID[🎥 Video Generator]
     end
@@ -135,7 +134,7 @@ graph LR
 - **Issue #2 Resolution**: Fixes "Gener ative AI", null bytes, and split word problems
 - **AI Metadata Extraction**: Ollama-powered extraction of titles, authors, publishers, years, DOI/ISBN
 - **Video-based Indexing**: QR-encoded text chunks in video frames for efficient storage
-- **Cross-page Context**: Enhanced V2 processor preserves context between pages
+- **Cross-page Context**: Enhanced processor preserves context between pages
 - **RAG Integration**: Ready for Retrieval Augmented Generation workflows
 - **Interactive Chat**: Query your PDF library with natural language and source citations
 - **Accurate Page References**: Real PDF page numbers for precise citation tracking
@@ -199,7 +198,7 @@ graph TD
 // Browser-based key derivation
 class Web3KeyManager {
     async deriveEncryptionKey(privateKey, libraryId) {
-        const combined = `${privateKey}:${libraryId}:memvid:v1`;
+        const combined = `${privateKey}:${libraryId}:memvid`;
         // PBKDF2 key derivation in browser
         return await crypto.subtle.deriveBits({
             name: 'PBKDF2',
@@ -335,7 +334,7 @@ tiktoken
 - **Endpoint**: `POST http://localhost:11434/api/generate`
 - **Parameters**: `{"model": "nomic-embed-text", "embedding": true}`
 
-#### 2. **PDFLibraryProcessor (V1)**
+#### 2. **PDFLibraryProcessor**
 - **Basic processing** with standard chunking
 - **Configuration**:
   - Input folder: `./pdf_books`
@@ -343,13 +342,13 @@ tiktoken
   - Chunk size: 512 characters, Overlap: 50 characters
   - Output: 8,975 segments, ~482 chars average
 
-#### 3. **PDFLibraryProcessorV2 (Enhanced with Token-Based Chunking)**
+#### 3. **PDFLibraryProcessor (Enhanced with Token-Based Chunking)**
 - **Advanced processing** with high-quality text extraction and intelligent chunking
 - **PyMuPDF Integration**: Eliminates encoding issues that caused Issue #2 problems
 - **Token-Based Sliding Window**: Consistent 500-token chunks with 15% overlap
 - **Configuration**:
   - Input folder: `./pdf_books`
-  - Output folder: `./memvid_out_v2`
+  - Output folder: `./memvid_out`
   - Chunk size: 500 tokens (~2000 characters)
   - Overlap: 75 tokens (15%)
   - Method: Sliding window with semantic boundary detection
@@ -431,8 +430,7 @@ encoder.build_video("library.mp4", "library_index.json")
 
 ```
 eLibrary/
-├── pdf_library_processor.py      # V1: Basic PDF processor
-├── pdf_library_processor_v2.py   # V2: Enhanced processor with page metadata
+├── pdf_library_processor.py      # Enhanced PDF processor with page metadata
 ├── pdf_library_chat.py           # Interactive chat interface
 ├── requirements.txt              # Python dependencies
 ├── README.md                     # This documentation
@@ -451,14 +449,10 @@ eLibrary/
 ├── pdf_books/                    # Input PDF files (excluded from git)
 │   ├── book1.pdf
 │   └── book2.pdf
-├── memvid_out/                   # V1 Output (excluded from git)
-│   ├── library.mp4              # V1 Video index
-│   ├── library_index.json       # V1 Metadata (8,975 segments)
-│   └── library_index.faiss      # V1 Vector index
-├── memvid_out_v2/               # V2 Enhanced Output (excluded from git)
-│   ├── library_v2.mp4           # V2 Video index
-│   ├── library_v2_index.json    # V2 Enhanced metadata (14,486 segments)
-│   └── library_v2_index.faiss   # V2 Vector index
+├── memvid_out/                   # Output (excluded from git)
+│   ├── library.mp4              # Video index
+│   ├── library_index.json       # Enhanced metadata
+│   └── library_index.faiss      # Vector index
 └── venv/                        # Python virtual environment (excluded)
 ```
 
@@ -496,17 +490,16 @@ cp *.pdf pdf_books/
 
 ### 4. Run Processing
 
-**Option A: Basic V1 Processor**
+**Main Processor**
 ```bash
 python3 pdf_library_processor.py
 ```
 
-**Option B: Enhanced V2 Processor (Recommended)**
 ```bash
-python3 pdf_library_processor_v2.py
+python3 pdf_library_processor.py
 ```
 
-**V2 Benefits:**
+**Benefits:**
 - 61% more text segments (14,486 vs 8,975)
 - Shorter, more precise chunks (362 vs 482 chars)
 - Cross-page context preservation (2,184 cross-page chunks)
@@ -523,7 +516,7 @@ python3 pdf_library_chat.py
 
 ## 📊 Processing Results
 
-### V2 Enhanced Output (Recommended)
+### Enhanced Output
 ```
 Found 7 PDF files to process
 Output directory: memvid_out_v2
@@ -541,14 +534,14 @@ Enhancing index with detailed metadata...
 
 ✅ SUCCESS!
 📚 Processed 7 PDF books
-🎥 Enhanced video: memvid_out_v2/library_v2.mp4
-📋 Enhanced index: memvid_out_v2/library_v2_index.json
+🎥 Enhanced video: memvid_out/library.mp4
+📋 Enhanced index: memvid_out/library_index.json
 📄 Each chunk includes detailed page references!
 ```
 
 ### Performance Comparison
 
-| Metric | V1 Basic | V2 Enhanced | Improvement |
+| Metric | Previous | Current | Improvement |
 |--------|----------|-------------|-------------|
 | Total segments | 8,975 | 14,486 | +61% |
 | Avg segment length | 482 chars | 362 chars | -25% (more precise) |
@@ -563,7 +556,7 @@ Enhancing index with detailed metadata...
 - Framerate: 1 FPS (default memvid)
 - Formát: MP4 s H.264 codec
 
-#### `library_v2_index.json` (Enhanced)
+#### `library_index.json` (Enhanced)
 ```json
 {
   "metadata": [
@@ -823,7 +816,7 @@ exit/quit     - Exit chat
 ## 🔧 Technical Details
 
 ### Components
-- **PDFLibraryChatV2**: Main chat interface class
+- **PDFLibraryChat**: Main chat interface class
 - **OllamaLLM**: Local LLM for response generation  
 - **MemvidChat/MemvidRetriever**: Video memory search and retrieval
 - **Citation Engine**: Matches search results with enhanced metadata
@@ -851,14 +844,14 @@ INSTRUCTIONS:
 
 ## 📝 Version History
 
-### V2.0 (Current) - Enhanced Processing
+### Current - Enhanced Processing
 - **14,486 segments** with detailed page metadata
 - **Cross-page chunks** for better context preservation
 - **Enhanced statistics** and book information
 - **Improved chunking** (400 chars vs 512 chars)
 - **Better RAG performance** with more precise segments
 
-### V1.0 - Basic Processing
+### Previous - Basic Processing
 - **8,975 segments** with basic metadata
 - **512-character chunks** with standard overlap
 - **Simple PDF processing** without page references

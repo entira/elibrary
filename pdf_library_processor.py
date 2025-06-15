@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PDF Library Processor v2 with Enhanced Skip Optimization
+PDF Library Processor with Enhanced Skip Optimization
 Processes PDF books with detailed page tracking and intelligent skip mechanism.
 
 Features:
@@ -259,7 +259,7 @@ class EnhancedChunk:
 class PDFLibraryProcessorV2:
     """Enhanced PDF processor with detailed page tracking."""
     
-    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out_v2", n_workers: int = None, force_reprocess: bool = False):
+    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./memvid_out", n_workers: int = None, force_reprocess: bool = False):
         self.pdf_dir = Path(pdf_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
@@ -281,7 +281,7 @@ class PDFLibraryProcessorV2:
             print(f"🚀 MemvidEncoder configured with {encoder_workers} workers for parallel QR generation")
         
         # Get already processed PDFs if not forcing reprocess
-        index_path = self.output_dir / "library_v2_index.json"
+        index_path = self.output_dir / "library_index.json"
         self.processed_pdfs = get_processed_pdfs_from_index(index_path) if not force_reprocess else set()
         
         # Initialize tokenizer for token-based chunking
@@ -736,8 +736,8 @@ class PDFLibraryProcessorV2:
                 processed_count += 1
         
         # Check if we have any content to work with
-        video_path = str(self.output_dir / "library_v2.mp4")
-        index_path = str(self.output_dir / "library_v2_index.json")
+        video_path = str(self.output_dir / "library.mp4")
+        index_path = str(self.output_dir / "library_index.json")
         
         if processed_count == 0 and skipped_count == 0:
             print("No PDFs were successfully processed!")
@@ -746,8 +746,8 @@ class PDFLibraryProcessorV2:
             # All PDFs were skipped, check if video already exists
             if Path(video_path).exists() and Path(index_path).exists():
                 print(f"\n✅ All {skipped_count} PDFs already processed!")
-                print(f"🎥 Existing video: {self.output_dir / 'library_v2.mp4'}")
-                print(f"📋 Existing index: {self.output_dir / 'library_v2_index.json'}")
+                print(f"🎥 Existing video: {self.output_dir / 'library.mp4'}")
+                print(f"📋 Existing index: {self.output_dir / 'library_index.json'}")
                 print(f"📄 Use --force-reprocess to regenerate video")
                 return
             else:
@@ -764,8 +764,8 @@ class PDFLibraryProcessorV2:
             
             print(f"\n✅ SUCCESS!")
             print(f"📚 Processed {processed_count} PDF books (skipped {skipped_count})")
-            print(f"🎥 Enhanced video: {self.output_dir / 'library_v2.mp4'}")
-            print(f"📋 Enhanced index: {self.output_dir / 'library_v2_index.json'}")
+            print(f"🎥 Enhanced video: {self.output_dir / 'library.mp4'}")
+            print(f"📋 Enhanced index: {self.output_dir / 'library_index.json'}")
             print(f"📄 Each chunk includes detailed page references!")
             
         except Exception as e:
@@ -787,7 +787,7 @@ def main():
     os.environ['PYTHONWARNINGS'] = 'ignore'
     os.environ['MEMVID_QUIET'] = '1'
     
-    parser = argparse.ArgumentParser(description='PDF Library Processor V2 with Skip Optimization')
+    parser = argparse.ArgumentParser(description='PDF Library Processor with Skip Optimization')
     parser.add_argument('--max-workers', type=int, default=None,
                        help='Maximum number of workers for parallel processing (default: auto)')
     parser.add_argument('--force-reprocess', action='store_true',

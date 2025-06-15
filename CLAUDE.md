@@ -226,7 +226,7 @@ def encrypt_chunk(text: str, key: bytes) -> dict:
 // Web3 key derivation in browser
 class Web3KeyManager {
     async deriveEncryptionKey(privateKey, libraryId) {
-        const combined = `${privateKey}:${libraryId}:memvid:v1`;
+        const combined = `${privateKey}:${libraryId}:memvid`;
         return await crypto.subtle.deriveBits({
             name: 'PBKDF2',
             salt: new TextEncoder().encode('memvid-web3-salt'),
@@ -427,20 +427,16 @@ def clean_extracted_text(self, text: str) -> str:
 
 ## Testing Commands
 
-### Run extraction quality test
-```bash
-python3 test_pdf_extraction_multi.py
-```
-
-### Test new implementation
+### Test implementation
 ```bash
 source venv/bin/activate
 python3 pdf_library_processor.py
 ```
 
-### Compare with old results
+### Verify processing quality
 ```bash
-python3 detailed_analysis.py
+# Check output quality in generated files
+ls -la memvid_out/
 ```
 
 ## Updated Dependencies
@@ -462,7 +458,7 @@ pip install pymupdf
 
 1. **Import Test**: `python3 -c "import pdf_library_processor; print('✅ Import successful')"`
 2. **Run Processing**: `python3 pdf_library_processor.py`
-3. **Check Output Quality**: Compare generated `library_v2_index.json` for encoding issues
+3. **Check Output Quality**: Compare generated `library_index.json` for encoding issues
 4. **Search Test**: Use `pdf_chat.py` to verify improved search results
 
 ## Expected Improvements

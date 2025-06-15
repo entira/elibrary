@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PDF Library Chat Interface V2 with Interactive Library Selection
+PDF Library Chat Interface with Interactive Library Selection
 Interactive chat with PDF library video memory using local Ollama.
 """
 
@@ -117,14 +117,14 @@ class PDFLibraryChatV2:
     def find_all_libraries(self) -> List[Dict[str, Any]]:
         """Find all available library files."""
         libraries = []
-        possible_dirs = ["./memvid_out", "./memvid_out_2", "./memvid_out_v2"]
+        possible_dirs = ["./memvid_out"]
         
         for dir_path in possible_dirs:
             if os.path.exists(dir_path):
                 # Check for different library file patterns
                 patterns = [
                     ("library.mp4", "library_index.json"),
-                    ("library_v2.mp4", "library_v2_index.json")
+                    ("library.mp4", "library_index.json")
                 ]
                 
                 for video_name, index_name in patterns:
