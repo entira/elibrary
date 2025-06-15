@@ -9,11 +9,17 @@ import sys
 import time
 import json
 import requests
-import termios
-import tty
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from memvid import MemvidChat
+
+# Cross-platform keyboard input
+try:
+    import termios
+    import tty
+    HAS_TERMIOS = True
+except ImportError:
+    HAS_TERMIOS = False
 
 
 class OllamaLLM:
@@ -193,54 +199,51 @@ class PDFLibraryChatV2:
             print("🎯 Select PDF Library")
             print("📚" + "="*70 + "📚")
             print()
-            print("Use ↑↓ arrow keys to navigate, Enter to select, 'q' to quit:")
+            print("Enter library number (1-{}) or 'q' to quit:".format(len(libraries)))
             print()
             
             for i, library in enumerate(libraries):
-                marker = "→ " if i == current_selection else "  "
-                if i == current_selection:
-                    # Highlight selected option
-                    print(f"{marker}\033[44m{library['name']}\033[0m")
-                else:
-                    print(f"{marker}{library['name']}")
+                number = f"[{i+1}]"
+                highlight = "→ " if i == current_selection else "  "
+                print(f"{highlight}{number} {library['name']}")
                 
-                print(f"   📂 Directory: {library['directory']}")
-                print(f"   📊 Version: {library['version']}")
-                print(f"   📝 Chunks: {library['chunks']} (avg: {library['avg_length']})")
-                print(f"   📚 Files: {library['files']}")
+                print(f"     📂 Directory: {library['directory']}")
+                print(f"     📊 Version: {library['version']}")
+                print(f"     📝 Chunks: {library['chunks']} (avg: {library['avg_length']})")
+                print(f"     📚 Files: {library['files']}")
                 print()
         
         # Display initial menu
         display_menu()
         
+        # Use simplified input for cross-platform compatibility
         while True:
             try:
-                # Read a single character
-                fd = sys.stdin.fileno()
-                old_settings = termios.tcgetattr(fd)
-                try:
-                    tty.cbreak(fd)
-                    ch = sys.stdin.read(1)
-                finally:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                print("📝 Enter your choice: ", end='', flush=True)
+                user_input = input().strip().lower()
                 
-                # Handle input
-                if ch == '\x1b':  # ESC sequence (arrow keys)
-                    next1, next2 = sys.stdin.read(2)
-                    if next1 == '[':
-                        if next2 == 'A':  # Up arrow
-                            current_selection = (current_selection - 1) % len(libraries)
-                            display_menu()
-                        elif next2 == 'B':  # Down arrow
-                            current_selection = (current_selection + 1) % len(libraries)
-                            display_menu()
-                elif ch == '\r' or ch == '\n':  # Enter
-                    break
-                elif ch == 'q' or ch == '\x03':  # q or Ctrl+C
-                    print("\n👋 Goodbye!")
+                if user_input == 'q':
+                    print("👋 Goodbye!")
                     sys.exit(0)
+                elif user_input.isdigit():
+                    choice = int(user_input) - 1
+                    if 0 <= choice < len(libraries):
+                        current_selection = choice
+                        break
+                    else:
+                        print(f"❌ Invalid choice. Please enter 1-{len(libraries)}")
+                        display_menu()
+                elif user_input == '':
+                    # Default to current selection
+                    break
+                else:
+                    print("❌ Invalid input. Enter a number, or 'q' to quit")
+                    display_menu()
                     
             except KeyboardInterrupt:
+                print("\n👋 Goodbye!")
+                sys.exit(0)
+            except EOFError:
                 print("\n👋 Goodbye!")
                 sys.exit(0)
         
