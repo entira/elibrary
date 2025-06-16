@@ -336,7 +336,7 @@ class ModularPDFProcessor:
                 video_path = library["video_file"]
                 index_path = library["index_file"]
                 
-                print(f"     🎬 Building video with {len(chunk_texts)} chunks...")
+                print(f"     🎬 Building video with {len(all_chunks)} chunks...")
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     result = encoder.build_video(str(video_path), str(index_path))
