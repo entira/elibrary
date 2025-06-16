@@ -316,21 +316,21 @@ class ModularPDFProcessor:
                 
                 encoder = MemvidEncoder()
                 
-                # Add chunks to encoder (original pattern)
-                chunk_texts = []
+                # Add chunks to encoder one by one (exact original pattern)
                 encoder._enhanced_metadata = []
                 
                 for chunk in all_chunks:
-                    chunk_texts.append(chunk.text)
                     # Store enhanced metadata like original
                     chunk_metadata = {
                         **chunk.enhanced_metadata,
                         **chunk.to_dict()
                     }
+                    
+                    # Add to encoder one chunk at a time (original method)
+                    encoder.add_chunks([chunk.text])
+                    
+                    # Store metadata separately for later association (original pattern)
                     encoder._enhanced_metadata.append(chunk_metadata)
-                
-                # Add all chunks at once (original API)
-                encoder.add_chunks(chunk_texts)
                 
                 # Build video (this handles QR generation internally)
                 video_path = library["video_file"]
