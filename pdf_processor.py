@@ -37,7 +37,7 @@ os.environ['PYTHONWARNINGS'] = 'ignore'
 try:
     from modules import (
         TextExtractor, TextChunker, MetadataExtractor,
-        EmbeddingService, QRGenerator, VideoAssembler, EnhancedChunk
+        EmbeddingService, EnhancedChunk
     )
 except ImportError as e:
     print(f"❌ Module import failed: {e}")
@@ -137,16 +137,8 @@ class ModularPDFProcessor:
             else:
                 self.embedding_service = None
             
-            self.qr_generator = QRGenerator(
-                n_workers=self.config.max_workers,
-                show_progress=self.config.show_progress
-            )
-            
-            self.video_assembler = VideoAssembler(
-                fps=self.config.video_fps,
-                quality=self.config.video_quality,
-                compression=self.config.video_compression
-            )
+            # Note: QRGenerator and VideoAssembler not used in new approach
+            # We use MemVid encoder directly like original code
             
             if self.config.verbose:
                 print("✅ All modules initialized successfully")
@@ -308,29 +300,57 @@ class ModularPDFProcessor:
                 embed_stats = self.embedding_service.get_statistics()
                 print(f"     ✅ Generated embeddings: {embed_stats['success_rate']:.1f}% success rate")
             
-            # Prepare chunk data for QR generation
-            chunk_data = []
-            for chunk in all_chunks:
-                chunk_data.append({
-                    "text": chunk.text,
-                    "metadata": chunk.enhanced_metadata
-                })
-            
-            # Generate QR frames
-            print(f"\n⚡ Generating QR frames...")
-            temp_dir = data_dir / "temp"
-            temp_dir.mkdir(exist_ok=True)
-            
-            frames_dir, qr_stats = self.qr_generator.generate_qr_frames(chunk_data, temp_dir)
-            
-            # Assemble video
-            print(f"\n🎬 Assembling video...")
-            video_path = library["video_file"]
-            index_path = library["index_file"]
-            
-            result = self.video_assembler.assemble_video(
-                frames_dir, chunk_data, video_path, index_path, page_offsets
-            )
+            # Create MemVid encoder and add all chunks (copy original approach)
+            print(f"\n🎬 Creating video with MemVid encoder...")
+            try:
+                # Import and create encoder (with suppression like original)
+                import contextlib
+                import warnings
+                from io import StringIO
+                
+                with contextlib.redirect_stdout(StringIO()), \
+                     contextlib.redirect_stderr(StringIO()), \
+                     warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    from memvid import MemvidEncoder
+                
+                encoder = MemvidEncoder()
+                
+                # Add chunks to encoder (original pattern)
+                chunk_texts = []
+                encoder._enhanced_metadata = []
+                
+                for chunk in all_chunks:
+                    chunk_texts.append(chunk.text)
+                    # Store enhanced metadata like original
+                    chunk_metadata = {
+                        **chunk.enhanced_metadata,
+                        **chunk.to_dict()
+                    }
+                    encoder._enhanced_metadata.append(chunk_metadata)
+                
+                # Add all chunks at once (original API)
+                encoder.add_chunks(chunk_texts)
+                
+                # Build video (this handles QR generation internally)
+                video_path = library["video_file"]
+                index_path = library["index_file"]
+                
+                print(f"     🎬 Building video with {len(chunk_texts)} chunks...")
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    result = encoder.build_video(str(video_path), str(index_path))
+                
+                # Enhance index with metadata (original pattern)
+                self._enhance_index_with_metadata(encoder, index_path, page_offsets)
+                
+                result = {"success": True, "video_path": video_path, "index_path": index_path}
+                
+            except Exception as e:
+                print(f"     ❌ MemVid encoder failed: {e}")
+                if "numpy" in str(e).lower():
+                    print(f"     💡 Try: pip install 'numpy<2' to fix MemVid compatibility")
+                result = {"success": False, "error": str(e)}
             
             if result["success"]:
                 print(f"     ✅ Video created: {video_path}")
@@ -370,14 +390,56 @@ class ModularPDFProcessor:
             for error in self.stats["errors"]:
                 print(f"   {error}")
     
+    def _enhance_index_with_metadata(self, encoder, index_path, page_offsets):
+        """Enhance MemVid index with detailed metadata (copy from original)."""
+        try:
+            if not hasattr(encoder, '_enhanced_metadata'):
+                return
+                
+            print("     📋 Enhancing index with detailed metadata...")
+            
+            # Read the basic index created by MemVid
+            import json
+            with open(index_path, 'r', encoding='utf-8') as f:
+                index_data = json.load(f)
+            
+            # Enhance chunks with our metadata
+            if 'metadata' in index_data and len(index_data['metadata']) == len(encoder._enhanced_metadata):
+                for i, chunk in enumerate(index_data['metadata']):
+                    chunk['enhanced_metadata'] = encoder._enhanced_metadata[i]
+            
+            # Add summary statistics like original
+            enhanced_stats = {
+                "total_files": len(set(meta.get("file_name", "") for meta in encoder._enhanced_metadata if meta.get("file_name"))),
+                "total_chunks": len(encoder._enhanced_metadata),
+                "cross_page_chunks": sum(1 for meta in encoder._enhanced_metadata if meta.get("cross_page", False)),
+                "total_pages": sum(meta.get("num_pages", 0) for meta in encoder._enhanced_metadata),
+                "total_text_length": sum(len(meta.get("text", "")) for meta in encoder._enhanced_metadata),
+                "avg_chunk_length": sum(len(meta.get("text", "")) for meta in encoder._enhanced_metadata) / len(encoder._enhanced_metadata) if encoder._enhanced_metadata else 0,
+                "total_tokens": sum(meta.get("token_count", 0) for meta in encoder._enhanced_metadata),
+                "avg_tokens_per_chunk": sum(meta.get("token_count", 0) for meta in encoder._enhanced_metadata) / len(encoder._enhanced_metadata) if encoder._enhanced_metadata else 0,
+                "files_processed": list(set(meta.get("file_name", "") for meta in encoder._enhanced_metadata if meta.get("file_name"))),
+                "page_offsets": page_offsets
+            }
+            
+            index_data["enhanced_stats"] = enhanced_stats
+            index_data["version"] = "2.0"
+            index_data["created_by"] = "ModularPDFProcessor"
+            
+            # Write enhanced index
+            with open(index_path, 'w', encoding='utf-8') as f:
+                json.dump(index_data, f, indent=2, ensure_ascii=False)
+                
+        except Exception as e:
+            print(f"     ⚠️ Could not enhance index: {e}")
+    
     def get_module_statistics(self) -> Dict[str, Any]:
         """Get detailed statistics from all modules."""
         stats = {
             "processor": self.stats.copy(),
             "text_chunker": self.text_chunker.get_chunk_stats([]),
             "metadata_extractor": {},  # Would need to add stats tracking
-            "qr_generator": self.qr_generator.get_statistics(),
-            "video_assembler": self.video_assembler.get_statistics()
+            # Note: Using MemVid encoder directly instead of separate QR/Video modules
         }
         
         if self.embedding_service:

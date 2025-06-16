@@ -31,6 +31,18 @@ class EnhancedChunk:
     def __post_init__(self):
         """Calculate length after initialization."""
         self.length = len(self.text)
+    
+    def to_dict(self) -> Dict:
+        """Convert chunk to dictionary for serialization."""
+        return {
+            "text": self.text,
+            "start_page": self.start_page,
+            "end_page": self.end_page,
+            "chunk_index": self.chunk_index,
+            "token_count": self.token_count,
+            "length": self.length,
+            "cross_page": self.start_page != self.end_page
+        }
 
 
 class TextChunker:
