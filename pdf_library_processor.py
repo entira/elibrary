@@ -636,7 +636,7 @@ Example: {{"title": "Machine Learning Fundamentals", "authors": "John Smith, Jan
                 response = requests.post(
                     "http://localhost:11434/api/generate",
                     json={
-                        "model": "mistral:latest",
+                        "model": "gemma3:4b-it-qat",
                         "prompt": prompt,
                         "options": {
                             "temperature": 0.1,
