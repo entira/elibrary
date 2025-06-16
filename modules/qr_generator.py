@@ -52,11 +52,8 @@ def generate_single_qr_global(args):
         # Create temporary encoder for this chunk
         encoder = MemvidEncoder()
         
-        # Add the chunk data
-        encoder.add_text(
-            chunk_data["text"],
-            metadata=chunk_data.get("metadata", {})
-        )
+        # Add the chunk data (MemVid add_text only accepts text)
+        encoder.add_text(chunk_data["text"])
         
         # Generate QR frame for this chunk
         frame_path = frames_dir / f"frame_{chunk_index:06d}.png"
@@ -137,18 +134,30 @@ class QRGenerator:
         failed_frames = 0
         errors = []
         
-        with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
-            # Show progress if enabled
-            iterator = executor.map(generate_single_qr_global, chunk_args)
-            if self.show_progress:
-                iterator = tqdm(iterator, total=len(chunk_args), desc="QR Generation")
-            
-            for chunk_index, success, error in iterator:
-                if success:
-                    successful_frames += 1
-                else:
-                    failed_frames += 1
-                    errors.append(f"Frame {chunk_index}: {error}")
+        try:
+            with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
+                # Show progress if enabled
+                iterator = executor.map(generate_single_qr_global, chunk_args)
+                if self.show_progress:
+                    iterator = tqdm(iterator, total=len(chunk_args), desc="QR Generation")
+                
+                for chunk_index, success, error in iterator:
+                    if success:
+                        successful_frames += 1
+                    else:
+                        failed_frames += 1
+                        errors.append(f"Frame {chunk_index}: {error}")
+                        
+        except Exception as e:
+            print(f"     ⚠️ Parallel processing failed: {e}")
+            print(f"     🔄 Falling back to sequential processing...")
+            return self.generate_qr_frames_sequential(chunks, temp_dir)
+        
+        # If all frames failed, try sequential as fallback
+        if successful_frames == 0 and failed_frames > 0:
+            print(f"     ⚠️ All parallel frames failed")
+            print(f"     🔄 Falling back to sequential processing...")
+            return self.generate_qr_frames_sequential(chunks, temp_dir)
         
         # Calculate statistics
         processing_time = time.time() - start_time
@@ -206,23 +215,29 @@ class QRGenerator:
         if self.show_progress:
             iterator = tqdm(iterator, total=len(chunks), desc="QR Generation")
         
+        # Import memvid in main process for sequential processing
+        try:
+            from memvid import MemvidEncoder
+        except Exception as e:
+            print(f"     ❌ Failed to import MemVid: {e}")
+            if "numpy" in str(e).lower() or "array_api" in str(e).lower():
+                print(f"     💡 This appears to be a NumPy version conflict")
+                print(f"     💡 Try: pip install 'numpy<2' to fix MemVid compatibility")
+            return frames_dir, {"total_frames": len(chunks), "successful_frames": 0, "failed_frames": len(chunks)}
+        
         for i, chunk in iterator:
             try:
-                chunk_data = {
-                    "text": chunk.get("text", ""),
-                    "metadata": chunk.get("metadata", {})
-                }
+                # Create encoder for this chunk
+                encoder = MemvidEncoder()
                 
-                # Use the global function directly
-                chunk_index, success, error = generate_single_qr_global(
-                    (chunk_data, frames_dir, i)
-                )
+                # Add chunk text to encoder
+                encoder.add_text(chunk.get("text", ""))
                 
-                if success:
-                    successful_frames += 1
-                else:
-                    failed_frames += 1
-                    errors.append(f"Frame {i}: {error}")
+                # Generate QR frame
+                frame_path = frames_dir / f"frame_{i:06d}.png"
+                encoder._build_qr_frame(str(frame_path), i)
+                
+                successful_frames += 1
                     
             except Exception as e:
                 failed_frames += 1

@@ -74,12 +74,9 @@ class VideoAssembler:
             # Create encoder
             encoder = MemvidEncoder()
             
-            # Add chunks to encoder
+            # Add chunks to encoder (MemVid add_text only accepts text)
             for chunk in chunks:
-                encoder.add_text(
-                    chunk.get("text", ""),
-                    metadata=chunk.get("metadata", {})
-                )
+                encoder.add_text(chunk.get("text", ""))
             
             # Build video with enhanced options
             with self._suppress_output():
