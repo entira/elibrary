@@ -113,30 +113,30 @@ class TextExtractor:
             return ""
         
         # Remove null bytes and other control characters
-        text = re.sub(r'[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x84\\x86-\\x9f]', '', text)
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f]', '', text)
         
         # Fix multiple spaces while preserving intentional formatting
-        text = re.sub(r'[ \\t]+', ' ', text)  # Multiple spaces/tabs to single space
-        text = re.sub(r'[ \\t]*\\n[ \\t]*', '\\n', text)  # Clean line breaks
-        text = re.sub(r'\\n{3,}', '\\n\\n', text)  # Limit multiple newlines
+        text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces/tabs to single space
+        text = re.sub(r'[ \t]*\n[ \t]*', '\n', text)  # Clean line breaks
+        text = re.sub(r'\n{3,}', '\n\n', text)  # Limit multiple newlines
         
         # Fix common PDF extraction issues
-        text = re.sub(r'([a-z])(\\s+)([A-Z])', r'\\1 \\3', text)  # Fix split words like "P ackt"
-        text = re.sub(r'([a-z])\\s+([a-z])\\s+([a-z])', lambda m: m.group(0) if len(m.group(0)) > 10 else m.group(1) + m.group(2) + m.group(3), text)
+        text = re.sub(r'([a-z])(\s+)([A-Z])', r'\1 \3', text)  # Fix split words like "P ackt"
+        text = re.sub(r'([a-z])\s+([a-z])\s+([a-z])', lambda m: m.group(0) if len(m.group(0)) > 10 else m.group(1) + m.group(2) + m.group(3), text)
         
         # Remove artifacts and clean up
-        text = text.replace('\\u0000', '')  # Remove null characters
-        text = text.replace('\\ufffd', '')  # Remove replacement characters
-        text = text.replace('\\x00', '')   # Remove more null variants
+        text = text.replace('\u0000', '')  # Remove null characters
+        text = text.replace('\ufffd', '')  # Remove replacement characters
+        text = text.replace('\x00', '')   # Remove more null variants
         
         # Fix weird spacing patterns common in academic PDFs
-        text = re.sub(r'([a-z])\\s+([a-z])(?=\\s)', r'\\1\\2', text)  # Fix "w o r d" -> "word"
-        text = re.sub(r'\\b([A-Z])\\s+([a-z])', r'\\1\\2', text)  # Fix "T ext" -> "Text"
+        text = re.sub(r'([a-z])\s+([a-z])(?=\s)', r'\1\2', text)  # Fix "w o r d" -> "word"
+        text = re.sub(r'\b([A-Z])\s+([a-z])', r'\1\2', text)  # Fix "T ext" -> "Text"
         
         # Clean up excessive whitespace while preserving paragraph structure
-        text = re.sub(r'[ \\t]+', ' ', text)  # Multiple spaces to single
-        text = re.sub(r'\\n[ \\t]+', '\\n', text)  # Remove leading whitespace on lines
-        text = re.sub(r'[ \\t]+\\n', '\\n', text)  # Remove trailing whitespace on lines
+        text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces to single
+        text = re.sub(r'\n[ \t]+', '\n', text)  # Remove leading whitespace on lines
+        text = re.sub(r'[ \t]+\n', '\n', text)  # Remove trailing whitespace on lines
         
         # Final cleanup
         text = text.strip()
@@ -159,7 +159,7 @@ class TextExtractor:
                     continue
                 
                 # Look for page numbers at start or end of text
-                lines = text.split('\\n')
+                lines = text.split('\n')
                 
                 # Check first few and last few lines for page numbers
                 check_lines = lines[:3] + lines[-3:] if len(lines) > 6 else lines
@@ -168,7 +168,7 @@ class TextExtractor:
                     line = line.strip()
                     
                     # Look for standalone numbers that might be page numbers
-                    page_num_match = re.search(r'^\\s*(\\d+)\\s*$', line)
+                    page_num_match = re.search(r'^\s*(\d+)\s*$', line)
                     if page_num_match:
                         detected_page = int(page_num_match.group(1))
                         # Calculate offset (actual page number - detected page number)
@@ -177,7 +177,7 @@ class TextExtractor:
                             return offset
                 
                 # Look for "Page X" patterns
-                page_pattern_match = re.search(r'(?i)page\\s+(\\d+)', text)
+                page_pattern_match = re.search(r'(?i)page\s+(\d+)', text)
                 if page_pattern_match:
                     detected_page = int(page_pattern_match.group(1))
                     offset = page_num - detected_page

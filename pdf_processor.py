@@ -253,8 +253,8 @@ class ModularPDFProcessor:
             all_chunks = []
             page_offsets = {}
             
-            for pdf_path in pdf_files:
-                print(f"\n🔄 Processing: {pdf_path.name}")
+            for i, pdf_path in enumerate(pdf_files, 1):
+                print(f"\n🔄 Processing ({i}/{len(pdf_files)}): {pdf_path.name}")
                 
                 # Extract text
                 if self.config.verbose:

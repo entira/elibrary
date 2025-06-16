@@ -134,11 +134,10 @@ class EmbeddingService:
             text = text[:8000] + "..."
         
         response = requests.post(
-            f"{self.base_url}/api/generate",
+            f"{self.base_url}/api/embeddings",
             json={
                 "model": self.model,
-                "prompt": text,
-                "embedding": True
+                "prompt": text
             },
             timeout=self.timeout
         )
