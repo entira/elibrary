@@ -27,15 +27,18 @@ pip install -r requirements.txt
 3. **Setup Ollama**
 ```bash
 # Install Ollama from https://ollama.ai
-ollama pull mistral:latest
-ollama pull nomic-embed-text
+ollama pull mistral:latest      # For chat responses
+ollama pull gemma3:4b-it-qat   # For metadata extraction  
+ollama pull nomic-embed-text   # For embeddings
 ```
 
 4. **Add PDF files**
 ```bash
-# Place your PDF files in the library structure
-mkdir -p library/1/pdf
-# Copy your PDF files here
+# Create library structure (supports multiple libraries)
+mkdir -p library/1/pdf library/2/pdf
+# Copy your PDF files to the appropriate library directories
+cp your_pdfs_set1/* library/1/pdf/
+cp your_pdfs_set2/* library/2/pdf/
 ```
 
 ### Basic Usage
@@ -54,12 +57,14 @@ python3 pdf_chat.py
 
 ### Current Capabilities
 
+- **Multi-Library Support**: Automatic discovery and processing of multiple PDF library instances (library/1/, library/2/, etc.)
+- **Cross-Library Search**: Search across all libraries simultaneously with library-aware citations
 - **Token-based Chunking**: Smart sliding window chunking (500 tokens, 15% overlap)
-- **Enhanced Metadata**: Automatic extraction of titles, authors, publishers, publication years
-- **PDF Page Citations**: Page references using PDF file page numbers in chat responses
+- **Enhanced Metadata**: Automatic extraction using optimized LLM model (gemma3:4b-it-qat)
+- **PDF Page Citations**: Page references with library context [Book Title, page X - Library Y]
 - **Cross-page Context**: Context preservation across page boundaries
 - **Semantic Search**: Vector-based search across all processed content using embeddings
-- **Smart Skip Processing**: Avoids reprocessing already processed PDFs
+- **Smart Skip Processing**: Per-library skip mechanism for efficient processing
 - **Parallel Processing**: Multi-worker QR generation for faster processing
 - **Clean Output**: Comprehensive warning suppression for professional experience
 
@@ -97,15 +102,19 @@ graph LR
 
 ```
 elibrary/
-├── pdf_library_processor.py # Main processor
-├── pdf_chat.py             # Chat interface
-├── library/                # Library structure
-│   └── 1/                  # Library instance
-│       ├── pdf/            # Input PDFs
-│       └── data/           # Generated files
-│           ├── library.mp4
-│           ├── library_index.json
-│           └── library_index.faiss
+├── pdf_library_processor.py # Main processor with multi-library support
+├── pdf_chat.py             # Multi-library chat interface
+├── library/                # Multi-library structure
+│   ├── 1/                  # Library instance 1
+│   │   ├── pdf/            # Input PDFs for Library 1
+│   │   └── data/           # Generated files for Library 1
+│   │       ├── library.mp4
+│   │       ├── library_index.json
+│   │       └── library_index.faiss
+│   ├── 2/                  # Library instance 2
+│   │   ├── pdf/            # Input PDFs for Library 2
+│   │   └── data/           # Generated files for Library 2
+│   └── ...                 # Additional libraries (3, 4, etc.)
 └── requirements.txt        # Dependencies
 ```
 
@@ -128,14 +137,15 @@ python3 pdf_library_processor.py --force-reprocess
 python3 pdf_library_processor.py --max-workers 8
 ```
 
-### Chat Interface
+### Multi-Library Chat Interface
 
 The chat system provides:
-- Interactive Q&A with your PDF library
-- Automatic citations with book titles and PDF page numbers
+- Interactive Q&A across all your PDF libraries
+- Automatic citations with library context [Book Title, page X - Library Y]
+- Cross-library search with unified results
 - Context-aware responses using RAG
 - Semantic search across all processed documents with vector embeddings
-- Real-time search results with relevance-based ranking
+- Real-time search results with relevance-based ranking across libraries
 
 Example interaction:
 ```
@@ -174,7 +184,7 @@ For detailed technical documentation, see [CLAUDE.md](CLAUDE.md).
 ### Key Technologies
 
 - **PyMuPDF**: High-quality PDF text extraction
-- **Ollama**: Local LLM for metadata extraction and chat
+- **Ollama**: Local LLM ecosystem (gemma3:4b-it-qat for metadata, mistral:latest for chat)
 - **MemVid**: Video-based indexing and QR code generation
 - **FAISS**: Vector similarity search
 - **Token-based Processing**: Optimal chunk sizes for RAG
@@ -195,8 +205,9 @@ ollama serve
 **Missing Models**
 ```bash
 # Pull required models
-ollama pull mistral:latest
-ollama pull nomic-embed-text
+ollama pull mistral:latest      # For chat responses
+ollama pull gemma3:4b-it-qat   # For metadata extraction
+ollama pull nomic-embed-text   # For embeddings
 ```
 
 **Memory Issues**
