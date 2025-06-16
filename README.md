@@ -100,7 +100,7 @@ elibrary/
 ├── pdf_books/              # Input PDFs
 ├── pdf_library_processor.py # Main processor
 ├── pdf_chat.py             # Chat interface
-├── memvid_out/            # Generated output
+├── library/               # Generated output
 │   ├── library.mp4        # Video index
 │   └── library_index.json # Metadata
 └── requirements.txt       # Dependencies
@@ -154,7 +154,7 @@ Based on your library, here are key podcasting best practices:
 The system automatically detects and uses:
 - Local Ollama installation at `http://localhost:11434`
 - PDF files in `./pdf_books/` directory
-- Output directory at `./memvid_out/`
+- Output directory at `./library/`
 
 ### Dependencies
 

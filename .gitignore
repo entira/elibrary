@@ -46,6 +46,7 @@ ehthumbs.db
 Thumbs.db
 
 # Large output files
+library/
 memvid_out/
 memvid_out_2/
 memvid_out_v2/

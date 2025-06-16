@@ -141,7 +141,7 @@ class PDFLibraryChat:
     def find_all_libraries(self) -> List[Dict[str, Any]]:
         """Find all available library files."""
         libraries = []
-        possible_dirs = ["./memvid_out"]
+        possible_dirs = ["./library"]
         
         for dir_path in possible_dirs:
             if os.path.exists(dir_path):
