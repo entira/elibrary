@@ -417,7 +417,7 @@ class PDFLibraryProcessorV2:
             
             # Extract metadata using Ollama
             print(f"     🤖 Extracting metadata...")
-            metadata = self.extract_metadata_with_ollama(sample_text)
+            metadata = self.extract_metadata_with_ollama(sample_text, pdf_path.name)
             
             print(f"     📚 Title: {metadata['title'][:60]}{'...' if len(metadata['title']) > 60 else ''}")
             print(f"     👤 Authors: {metadata['authors'][:50]}{'...' if len(metadata['authors']) > 50 else ''}")
@@ -531,59 +531,187 @@ class PDFLibraryProcessorV2:
             'page_offsets': page_offsets
         }
         
-    def extract_metadata_with_ollama(self, sample_text: str) -> Dict[str, str]:
-        """Extract metadata using Ollama mistral:latest model."""
-        try:
-            prompt = f"Extract JSON with keys: title, authors, publishers, year, doi from this text:\n\n{sample_text}\n\nReturn only valid JSON."
-            
-            response = requests.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": "mistral:latest",
-                    "prompt": prompt,
-                    "options": {"temperature": 0.1}
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-            
-            # Parse streaming response
-            response_text = ""
-            for line in response.text.strip().split('\n'):
-                if line:
-                    try:
-                        chunk = json.loads(line)
-                        if "response" in chunk:
-                            response_text += chunk["response"]
-                    except json.JSONDecodeError:
-                        continue
-            
-            # Try to extract JSON from response
+    def extract_metadata_from_filename(self, filename: str) -> Dict[str, str]:
+        """Fallback: extract metadata from filename patterns."""
+        metadata = {
+            "title": "",
+            "authors": "",
+            "publishers": "",
+            "year": "",
+            "doi": ""
+        }
+        
+        # Common filename patterns: "Title -- Author -- Year -- Publisher -- ISBN -- Source.pdf"
+        filename_clean = filename.replace('.pdf', '')
+        
+        # Try to parse structured filenames
+        if ' -- ' in filename_clean:
+            parts = filename_clean.split(' -- ')
+            if len(parts) >= 4:
+                metadata["title"] = parts[0].strip()
+                metadata["authors"] = parts[1].strip() if parts[1].strip() != '_' else ""
+                metadata["year"] = self._extract_year(parts[2]) if len(parts) > 2 else ""
+                metadata["publishers"] = parts[3].strip() if len(parts) > 3 and parts[3].strip() != '_' else ""
+                if len(parts) > 4:
+                    metadata["doi"] = parts[4].strip() if parts[4].strip() not in ['_', 'Anna\'s Archive'] else ""
+        else:
+            # Fallback: use filename as title and try to extract year
+            metadata["title"] = filename_clean.replace('_', ' ').replace('-', ' ')
+            metadata["year"] = self._extract_year(filename_clean)
+        
+        return metadata
+    
+    def validate_metadata(self, metadata: Dict[str, str]) -> Dict[str, str]:
+        """Validate and clean extracted metadata."""
+        validated = {}
+        
+        # Title validation
+        title = metadata.get("title", "").strip()
+        if len(title) < 2 or title.lower() in ["unknown", "not provided", "n/a", ""]:
+            validated["title"] = ""
+        elif len(title) > 200:
+            validated["title"] = title[:200] + "..."
+        else:
+            validated["title"] = title
+        
+        # Authors validation
+        authors = metadata.get("authors", "").strip()
+        if authors.lower() in ["unknown", "not provided", "n/a", "not specified in the text", ""]:
+            validated["authors"] = ""
+        elif len(authors) > 150:
+            # Truncate long author lists
+            validated["authors"] = authors[:150] + "..."
+        else:
+            validated["authors"] = authors
+        
+        # Publishers validation
+        publishers = metadata.get("publishers", "").strip()
+        if publishers.lower() in ["unknown", "not provided", "n/a", "publisher name", "not specified in the text", ""]:
+            validated["publishers"] = ""
+        elif len(publishers) > 100:
+            validated["publishers"] = publishers[:100] + "..."
+        else:
+            validated["publishers"] = publishers
+        
+        # Year validation
+        year = self._extract_year(metadata.get("year", ""))
+        validated["year"] = year
+        
+        # DOI validation
+        doi = metadata.get("doi", "").strip()
+        if doi.lower() in ["unknown", "not provided", "n/a", "doi number", "none", ""]:
+            validated["doi"] = ""
+        elif len(doi) > 50:
+            validated["doi"] = doi[:50]
+        else:
+            validated["doi"] = doi
+        
+        return validated
+
+    def extract_metadata_with_ollama(self, sample_text: str, filename: str = "", max_retries: int = 2) -> Dict[str, str]:
+        """Enhanced metadata extraction with retries, validation and filename fallback."""
+        
+        for attempt in range(max_retries + 1):
             try:
-                # Look for JSON in the response
+                # Improved prompt with specific instructions
+                prompt = f"""Extract metadata from this academic/technical document text and return ONLY valid JSON.
+
+TEXT:
+{sample_text[:2000]}
+
+Return JSON with these exact keys: title, authors, publishers, year, doi
+
+INSTRUCTIONS:
+- title: The main title of the document (not chapter/section titles)
+- authors: Full author names separated by commas (not "Unknown" or placeholders)
+- publishers: Publishing company name (not "Publisher Name" or placeholders)  
+- year: 4-digit publication year ONLY (like 2024, not ranges)
+- doi: DOI, ISBN, or similar identifier (not "DOI Number" or placeholders)
+- If any field is truly unknown, use empty string ""
+- Do not use placeholder text like "Unknown", "Not provided", "Publisher Name"
+- Return ONLY the JSON object, no other text
+
+Example: {{"title": "Machine Learning Fundamentals", "authors": "John Smith, Jane Doe", "publishers": "MIT Press", "year": "2024", "doi": "978-0262046824"}}"""
+
+                response = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={
+                        "model": "mistral:latest",
+                        "prompt": prompt,
+                        "options": {
+                            "temperature": 0.1,
+                            "max_tokens": 256,
+                            "stop": ["\n\n"]
+                        },
+                        "stream": False
+                    },
+                    timeout=30
+                )
+                response.raise_for_status()
+                
+                # Parse response
+                result = response.json()
+                response_text = result.get("response", "").strip()
+                
+                # Try to extract JSON from response
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
                     metadata = json.loads(json_match.group())
-                else:
-                    raise ValueError("No JSON found in response")
                     
-                # Clean and validate metadata
-                clean_metadata = {
-                    "title": str(metadata.get("title", "")).strip(),
-                    "authors": str(metadata.get("authors", "")).strip(),
-                    "publishers": str(metadata.get("publishers", "")).strip(),
-                    "year": self._extract_year(str(metadata.get("year", ""))),
-                    "doi": str(metadata.get("doi", "")).strip()
-                }
-                
-                return clean_metadata
-                
-            except (json.JSONDecodeError, ValueError) as e:
-                print(f"Failed to parse JSON from Ollama response: {e}")
-                return self._empty_metadata()
-                
-        except Exception as e:
-            print(f"Error extracting metadata with Ollama: {e}")
+                    # Validate required keys exist
+                    required_keys = ["title", "authors", "publishers", "year", "doi"]
+                    if all(key in metadata for key in required_keys):
+                        ollama_metadata = self.validate_metadata(metadata)
+                        
+                        # Combine with filename fallback if provided
+                        if filename:
+                            filename_metadata = self.extract_metadata_from_filename(filename)
+                            final_metadata = {}
+                            for key in required_keys:
+                                ollama_value = ollama_metadata.get(key, "").strip()
+                                filename_value = filename_metadata.get(key, "").strip()
+                                
+                                # Use Ollama value if meaningful, otherwise filename value
+                                if ollama_value and len(ollama_value) > 1:
+                                    final_metadata[key] = ollama_value
+                                elif filename_value and len(filename_value) > 1:
+                                    final_metadata[key] = filename_value
+                                    print(f"     🔄 Used filename for {key}")
+                                else:
+                                    final_metadata[key] = ""
+                            
+                            print(f"     ✅ Enhanced extraction successful (attempt {attempt + 1})")
+                            return final_metadata
+                        else:
+                            print(f"     ✅ Ollama extraction successful (attempt {attempt + 1})")
+                            return ollama_metadata
+                    else:
+                        print(f"     ❌ Missing required keys in attempt {attempt + 1}")
+                        if attempt == max_retries:
+                            break
+                        continue
+                else:
+                    print(f"     ❌ No JSON found in response (attempt {attempt + 1})")
+                    if attempt == max_retries:
+                        break
+                    continue
+                    
+            except json.JSONDecodeError as e:
+                print(f"     ❌ JSON decode error (attempt {attempt + 1}): {e}")
+                if attempt == max_retries:
+                    break
+                continue
+            except Exception as e:
+                print(f"     ❌ Ollama request error (attempt {attempt + 1}): {e}")
+                if attempt == max_retries:
+                    break
+                continue
+        
+        # If all attempts failed, use filename fallback
+        if filename:
+            print(f"     🔄 All Ollama attempts failed, using filename fallback")
+            return self.validate_metadata(self.extract_metadata_from_filename(filename))
+        else:
             return self._empty_metadata()
     
     def _extract_year(self, year_text: str) -> str:
