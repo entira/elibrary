@@ -29,10 +29,7 @@ import requests
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-# Suppress ALL output during memvid import
-with suppress_stdout(), suppress_stderr(), warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    from memvid import MemvidChat
+# Import memvid only when needed to avoid dependency issues
 
 # Cross-platform keyboard input
 try:
@@ -100,7 +97,18 @@ class MultiLibraryRetriever:
         self.retrievers = {}
         
         # Initialize retrievers for each library
-        from memvid import MemvidRetriever
+        try:
+            # Import memvid only when actually needed
+            with suppress_stdout(), suppress_stderr(), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from memvid import MemvidRetriever
+        except Exception as e:
+            print(f"❌ Failed to import MemvidRetriever: {e}")
+            print("⚠️  Multi-library search will not be available.")
+            print("💡 This might be due to numpy/transformers dependency issues.")
+            print("🔄 Try reinstalling dependencies or use a different Python environment.")
+            raise ImportError(f"MemvidRetriever import failed: {e}")
+            
         for lib in libraries:
             try:
                 retriever = MemvidRetriever(lib["video_file"], lib["index_file"])
@@ -648,8 +656,26 @@ def main():
         chat_app = PDFLibraryChat(use_ollama=use_ollama)
         chat_app.run_chat()
         
+    except ImportError as e:
+        print(f"❌ Import Error: {e}")
+        print("\n🔧 Possible solutions:")
+        print("   1. Check if memvid is properly installed: pip install memvid")
+        print("   2. Try reinstalling numpy and transformers:")
+        print("      pip uninstall numpy transformers -y")
+        print("      pip install numpy transformers")
+        print("   3. Use a clean Python environment or conda environment")
+        print("   4. Check if your Python environment is compatible")
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"❌ File Error: {e}")
+        print("\n💡 To create libraries:")
+        print("   1. mkdir -p library/1/pdf")
+        print("   2. cp your_pdfs/*.pdf library/1/pdf/")
+        print("   3. python3 pdf_library_processor.py")
+        sys.exit(1)
     except Exception as e:
-        print(f"❌ Error initializing chat: {e}")
+        print(f"❌ Unexpected Error: {e}")
+        print("\n🔍 Please check your setup and try again.")
         sys.exit(1)
 
 
