@@ -1,4 +1,6 @@
-# VideoAssembler Module
+# Video Assembly Integration
+
+⚠️ **Important**: Video assembly is now handled through direct MemVid encoder integration, not as a standalone VideoAssembler module. This documentation covers the integrated approach used in ModularPDFProcessor.
 
 ## Overview
 

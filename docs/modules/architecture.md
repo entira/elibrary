@@ -12,20 +12,33 @@ graph TD
     B --> C[MetadataExtractor]
     B --> D[TextChunker]
     D --> E[EmbeddingService]
-    D --> F[QRGenerator]
-    F --> G[VideoAssembler]
+    D --> F[MemVid Encoder]
     C --> D
-    E --> H[Vector Database]
-    G --> I[MP4 Video + JSON Index]
+    E --> G[Vector Database]
+    F --> H[MP4 Video + Enhanced Index]
+    
+    subgraph "MemVid Integration"
+        F --> I[Monkey-patched QR Generation]
+        I --> J[Parallel ProcessPoolExecutor]
+        I --> K[Warning Suppression]
+    end
+    
+    subgraph "Configuration"
+        L[ProcessorConfig] --> B
+        L --> C
+        L --> D
+        L --> E
+        L --> F
+    end
     
     style A fill:#e1f5fe
-    style I fill:#e8f5e8
+    style H fill:#e8f5e8
     style B fill:#fff3e0
     style C fill:#fce4ec
     style D fill:#f3e5f5
     style E fill:#e0f2f1
     style F fill:#fff8e1
-    style G fill:#e3f2fd
+    style L fill:#e8f5e8
 ```
 
 ## Module Dependencies
@@ -35,17 +48,71 @@ graph TD
 - **MetadataExtractor**: Ollama API (gemma3:4b-it-qat)
 - **TextChunker**: tiktoken (standalone)
 - **EmbeddingService**: Ollama API (nomic-embed-text)
-- **QRGenerator**: MemVid, multiprocessing
-- **VideoAssembler**: MemVid
+- **MemVid Encoder**: MemVid with monkey-patching, ProcessPoolExecutor
+- **ProcessorConfig**: Centralized configuration management
 
 ### Inter-Module Dependencies
 ```
+ProcessorConfig → All Modules (configuration)
 TextExtractor → TextChunker
 TextExtractor → MetadataExtractor
 MetadataExtractor → TextChunker (metadata enhancement)
 TextChunker → EmbeddingService
-TextChunker → QRGenerator
-QRGenerator → VideoAssembler
+TextChunker → MemVid Encoder
+MemVid Encoder → Enhanced Index Output
+```
+
+## ProcessorConfig Architecture
+
+The system uses a centralized configuration class that manages all module settings:
+
+```python
+@dataclass
+class ProcessorConfig:
+    # Core processing
+    max_workers: int = 4
+    force_reprocess: bool = False
+    quiet: bool = False
+    
+    # Chunking configuration
+    chunk_size: int = 500
+    overlap_percentage: float = 0.15
+    
+    # Model configuration
+    ollama_base_url: str = "http://localhost:11434"
+    metadata_model: str = "gemma3:4b-it-qat"
+    embedding_model: str = "nomic-embed-text"
+    
+    # Video generation
+    video_fps: int = 30
+    video_quality: str = "medium"
+    
+    # Advanced options
+    skip_embeddings: bool = False
+    test_modules: bool = False
+```
+
+## Warning Suppression System
+
+Comprehensive multi-layered warning suppression:
+
+```python
+# Environment level
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
+# Import level with stdout/stderr redirection
+with warnings.catch_warnings(), \
+     contextlib.redirect_stdout(StringIO()), \
+     contextlib.redirect_stderr(StringIO()):
+    warnings.simplefilter("ignore")
+    from memvid import MemvidEncoder
+
+# Worker process level
+def generate_single_qr_global(args):
+    with contextlib.redirect_stderr(open(os.devnull, 'w')):
+        # QR generation with all warnings suppressed
+        return process_qr(args)
 ```
 
 ## Data Flow

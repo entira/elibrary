@@ -53,8 +53,14 @@ python3 pdf_processor.py --help
 # Show detailed configuration guide
 python3 pdf_processor.py --help-config
 
-# Test all modules
+# Test all modules before processing
 python3 pdf_processor.py --test-modules
+
+# High-performance processing with parallel workers
+python3 pdf_processor.py --max-workers 8 --quiet
+
+# Force reprocess with custom chunking
+python3 pdf_processor.py --force-reprocess --chunk-size 750 --overlap 0.25
 ```
 
 #### Legacy Processor (Still Available)
@@ -72,53 +78,71 @@ python3 pdf_chat.py
 
 ### Current Capabilities
 
+- **Modular Architecture**: Six specialized modules for maintainable, testable processing
 - **Multi-Library Support**: Automatic discovery and processing of multiple PDF library instances (library/1/, library/2/, etc.)
 - **Cross-Library Search**: Search across all libraries simultaneously with library-aware citations
-- **Token-based Chunking**: Smart sliding window chunking (500 tokens, 15% overlap)
-- **Enhanced Metadata**: Automatic extraction using optimized LLM model (gemma3:4b-it-qat)
-- **PDF Page Citations**: Page references with library context [Book Title, page X - Library Y]
+- **Token-based Chunking**: Smart sliding window chunking (500 tokens, 15% overlap) with tiktoken
+- **Enhanced Metadata**: AI-powered extraction using optimized LLM model (gemma3:4b-it-qat)
+- **PDF Page Citations**: Accurate page references with library context [Book Title, page X - Library Y]
 - **Cross-page Context**: Context preservation across page boundaries
-- **Semantic Search**: Vector-based search across all processed content using embeddings
+- **Semantic Search**: Vector-based search across all processed content using nomic-embed-text
 - **Smart Skip Processing**: Per-library skip mechanism for efficient processing
-- **Parallel Processing**: Multi-worker QR generation for faster processing
-- **Clean Output**: Comprehensive warning suppression for professional experience
+- **Parallel QR Generation**: Multi-worker ProcessPoolExecutor with comprehensive warning suppression
+- **Clean Output**: Enhanced multi-layered warning suppression with stdout/stderr redirection
+- **Module Testing**: Comprehensive test suite for all components with `--test-modules`
+- **Advanced Configuration**: JSON config support, CLI overrides, and detailed help system
 
 ### Architecture
 
+#### Modular Processing Pipeline
+
 ```mermaid
-graph LR
-    subgraph "Input"
-        PDF[📄 PDF Files]
-    end
+graph TD
+    A[📄 PDF Files] --> B[🔧 TextExtractor]
+    B --> C[📊 MetadataExtractor]
+    B --> D[📝 TextChunker]
+    C --> D
+    D --> E[🧠 EmbeddingService]
+    D --> F[📱 QRGenerator]
+    F --> G[🎥 VideoAssembler]
+    E --> H[🔍 Vector Database]
+    G --> I[🎥 library.mp4 + 📋 library_index.json]
     
-    subgraph "Processing"
-        EXTRACT[🔧 Text Extraction]
-        CHUNK[📝 Token Chunking]
-        META[📊 Metadata Extraction]
-        QR[📱 QR Generation]
-        VIDEO[🎥 Video Assembly]
-    end
-    
-    subgraph "Output"
-        VID[🎥 library.mp4]
-        INDEX[📋 library_index.json]
-    end
-    
-    PDF --> EXTRACT
-    EXTRACT --> CHUNK
-    CHUNK --> META
-    META --> QR
-    QR --> VIDEO
-    VIDEO --> VID
-    VIDEO --> INDEX
+    style A fill:#e1f5fe
+    style I fill:#e8f5e8
+    style B fill:#fff3e0
+    style C fill:#fce4ec
+    style D fill:#f3e5f5
+    style E fill:#e0f2f1
+    style F fill:#fff8e1
+    style G fill:#e3f2fd
 ```
+
+#### Module Responsibilities
+- **TextExtractor**: PyMuPDF-based PDF text extraction with page mapping
+- **MetadataExtractor**: AI-powered title/author/publisher extraction
+- **TextChunker**: Token-based sliding window chunking with overlap
+- **EmbeddingService**: Vector embeddings using nomic-embed-text
+- **QRGenerator**: Parallel QR frame generation with ProcessPoolExecutor
+- **VideoAssembler**: MemVid integration for final video creation
 
 ### Project Structure
 
 ```
 elibrary/
-├── pdf_library_processor.py # Main processor with multi-library support
+├── pdf_processor.py        # Modern modular processor (RECOMMENDED)
+├── pdf_library_processor.py # Legacy monolithic processor
 ├── pdf_chat.py             # Multi-library chat interface
+├── modules/                # Modular architecture
+│   ├── __init__.py
+│   ├── text_extractor.py   # PyMuPDF text extraction
+│   ├── metadata_extractor.py # AI metadata extraction
+│   ├── text_chunker.py     # Token-based chunking
+│   ├── embedding_service.py # Vector embeddings
+│   ├── qr_generator.py     # Parallel QR generation
+│   └── video_assembler.py  # MemVid integration
+├── docs/                   # Detailed module documentation
+│   └── modules/            # Per-module technical docs
 ├── library/                # Multi-library structure
 │   ├── 1/                  # Library instance 1
 │   │   ├── pdf/            # Input PDFs for Library 1
@@ -130,6 +154,7 @@ elibrary/
 │   │   ├── pdf/            # Input PDFs for Library 2
 │   │   └── data/           # Generated files for Library 2
 │   └── ...                 # Additional libraries (3, 4, etc.)
+├── CLAUDE.md              # Developer documentation
 └── requirements.txt        # Dependencies
 ```
 
@@ -139,23 +164,29 @@ elibrary/
 
 #### Modular Processor (Recommended)
 ```bash
+# Test all modules first (recommended)
+python3 pdf_processor.py --test-modules
+
 # Standard processing with defaults
 python3 pdf_processor.py
 
 # Force reprocess all files
 python3 pdf_processor.py --force-reprocess
 
-# High performance processing
+# High performance processing with parallel workers
 python3 pdf_processor.py --max-workers 12 --fps 60 --quality high
 
-# Fast processing (skip embeddings)
+# Fast processing (skip embeddings) with clean output
 python3 pdf_processor.py --no-embeddings --quiet --max-workers 4
 
 # Custom chunking for large documents
-python3 pdf_processor.py --chunk-size 750 --overlap 0.20
+python3 pdf_processor.py --chunk-size 750 --overlap 0.25
 
 # Use custom configuration file
 python3 pdf_processor.py --config my_config.json
+
+# Debug mode with detailed output
+python3 pdf_processor.py --max-workers 8 --chunk-size 500 --overlap 0.15
 ```
 
 #### Legacy Processor
@@ -212,11 +243,15 @@ For detailed technical documentation, see [CLAUDE.md](CLAUDE.md).
 
 ### Key Technologies
 
-- **PyMuPDF**: High-quality PDF text extraction
-- **Ollama**: Local LLM ecosystem (gemma3:4b-it-qat for both metadata and chat)
-- **MemVid**: Video-based indexing and QR code generation
+- **PyMuPDF**: High-quality PDF text extraction with page mapping
+- **Ollama**: Local LLM ecosystem
+  - `gemma3:4b-it-qat`: Optimized for metadata extraction and chat responses
+  - `nomic-embed-text`: High-quality vector embeddings (768 dimensions)
+- **MemVid**: Video-based indexing and QR code generation with monkey patching
+- **tiktoken**: GPT-4 compatible tokenization for precise chunking
+- **ProcessPoolExecutor**: Parallel QR generation with comprehensive warning suppression
 - **FAISS**: Vector similarity search
-- **Token-based Processing**: Optimal chunk sizes for RAG
+- **Token-based Processing**: Optimal 500-token chunks with 15% overlap for RAG
 
 ## Troubleshooting
 
@@ -241,6 +276,12 @@ ollama pull nomic-embed-text   # For embeddings
 **Memory Issues**
 ```bash
 # Reduce workers for low-memory systems
+python3 pdf_processor.py --max-workers 2
+
+# Test modules individually
+python3 pdf_processor.py --test-modules
+
+# Legacy processor with fewer workers
 python3 pdf_library_processor.py --max-workers 2
 ```
 
@@ -248,11 +289,14 @@ python3 pdf_library_processor.py --max-workers 2
 
 ### Planned Features
 
+- **Enhanced Modules**: Additional specialized processors for different document types
 - **CDN/S3 Streaming**: On-demand video frame streaming from cloud storage
 - **Content Encryption**: AES-256-GCM encryption for QR code content
 - **MCP Server**: Model Context Protocol implementation for AI assistant integration
-- **Advanced Search**: Semantic search with similarity scoring
+- **Advanced Search**: Enhanced semantic search with similarity scoring
 - **Multi-format Support**: EPUB, DOCX, and other document formats
+- **Configuration UI**: Web-based configuration management for modules
+- **Performance Metrics**: Real-time monitoring and optimization suggestions
 
 ### Architecture Evolution
 

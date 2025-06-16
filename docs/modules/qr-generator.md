@@ -1,8 +1,10 @@
-# QRGenerator Module
+# QR Code Generation Integration
+
+⚠️ **Important**: QR generation is now handled through MemVid encoder integration with monkey-patching, not as a standalone QRGenerator module. This documentation covers the integrated approach used in ModularPDFProcessor.
 
 ## Overview
 
-The `QRGenerator` module handles parallel QR code generation for text chunks with progress tracking, temporary file management, and optimized processing for video assembly with MemVid integration.
+The QR generation system handles parallel QR code creation for text chunks through MemVid encoder monkey-patching, with comprehensive warning suppression, progress tracking, and optimized processing for video assembly.
 
 ## Features
 
