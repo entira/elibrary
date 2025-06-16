@@ -42,12 +42,28 @@ cp your_pdfs_set2/* library/2/pdf/
 
 ### Basic Usage
 
-1. **Process PDF library**
+#### New Modular Processor (Recommended)
 ```bash
+# Modern modular processor with enhanced CLI
+python3 pdf_processor.py
+
+# See all options and examples
+python3 pdf_processor.py --help
+
+# Show detailed configuration guide
+python3 pdf_processor.py --help-config
+
+# Test all modules
+python3 pdf_processor.py --test-modules
+```
+
+#### Legacy Processor (Still Available)
+```bash
+# Original monolithic processor
 python3 pdf_library_processor.py
 ```
 
-2. **Chat with your documents**
+#### Chat Interface
 ```bash
 python3 pdf_chat.py
 ```
@@ -121,18 +137,32 @@ elibrary/
 
 ### Processing Options
 
-**Standard processing:**
+#### Modular Processor (Recommended)
 ```bash
+# Standard processing with defaults
+python3 pdf_processor.py
+
+# Force reprocess all files
+python3 pdf_processor.py --force-reprocess
+
+# High performance processing
+python3 pdf_processor.py --max-workers 12 --fps 60 --quality high
+
+# Fast processing (skip embeddings)
+python3 pdf_processor.py --no-embeddings --quiet --max-workers 4
+
+# Custom chunking for large documents
+python3 pdf_processor.py --chunk-size 750 --overlap 0.20
+
+# Use custom configuration file
+python3 pdf_processor.py --config my_config.json
+```
+
+#### Legacy Processor
+```bash
+# Original processor (still available)
 python3 pdf_library_processor.py
-```
-
-**Force reprocess all files:**
-```bash
 python3 pdf_library_processor.py --force-reprocess
-```
-
-**Use multiple workers:**
-```bash
 python3 pdf_library_processor.py --max-workers 8
 ```
 
