@@ -337,9 +337,21 @@ class ModularPDFProcessor:
                 index_path = library["index_file"]
                 
                 print(f"     🎬 Building video with {len(all_chunks)} chunks...")
-                with warnings.catch_warnings():
+                
+                # Suppress all MemVid output like original
+                import sys
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                
+                with contextlib.redirect_stdout(StringIO()), \
+                     contextlib.redirect_stderr(StringIO()), \
+                     warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     result = encoder.build_video(str(video_path), str(index_path))
+                
+                # Restore output
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
                 
                 # Enhance index with metadata (original pattern)
                 self._enhance_index_with_metadata(encoder, index_path, page_offsets)
@@ -360,11 +372,6 @@ class ModularPDFProcessor:
                 self.stats["libraries_processed"] += 1
                 self.stats["total_files"] += len(pdf_files)
                 self.stats["total_chunks"] += len(all_chunks)
-                
-                # Cleanup temporary files
-                if temp_dir.exists():
-                    import shutil
-                    shutil.rmtree(temp_dir)
                 
                 return True
             else:
