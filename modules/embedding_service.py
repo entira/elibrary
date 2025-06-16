@@ -10,6 +10,7 @@ import warnings
 from typing import List, Optional, Dict, Any
 import requests
 import time
+from tqdm import tqdm
 
 # Suppress warnings for clean output
 warnings.filterwarnings("ignore")
@@ -64,11 +65,16 @@ class EmbeddingService:
         embeddings = []
         start_time = time.time()
         
-        # Process in batches for better performance
-        for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
-            batch_embeddings = self._process_batch(batch)
-            embeddings.extend(batch_embeddings)
+        # Process in batches for better performance with progress tracking
+        total_batches = (len(texts) + self.batch_size - 1) // self.batch_size
+        
+        with tqdm(total=len(texts), desc="🧠 Generating embeddings", unit="texts", 
+                  bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]") as pbar:
+            for i in range(0, len(texts), self.batch_size):
+                batch = texts[i:i + self.batch_size]
+                batch_embeddings = self._process_batch(batch)
+                embeddings.extend(batch_embeddings)
+                pbar.update(len(batch))
         
         # Update statistics
         processing_time = time.time() - start_time
