@@ -43,7 +43,7 @@ except ImportError:
 class OllamaLLM:
     """Local Ollama LLM interface for chat responses."""
     
-    def __init__(self, model: str = "mistral:latest", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "gemma3:4b-it-qat", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
     
@@ -73,7 +73,8 @@ INSTRUCTIONS:
                     "prompt": full_prompt,
                     "options": {
                         "temperature": 0.7,
-                        "max_tokens": 512
+                        "top_p": 0.9,
+                        "max_tokens": 768
                     },
                     "stream": False
                 },

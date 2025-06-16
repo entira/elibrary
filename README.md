@@ -27,8 +27,7 @@ pip install -r requirements.txt
 3. **Setup Ollama**
 ```bash
 # Install Ollama from https://ollama.ai
-ollama pull mistral:latest      # For chat responses
-ollama pull gemma3:4b-it-qat   # For metadata extraction  
+ollama pull gemma3:4b-it-qat   # For chat responses and metadata
 ollama pull nomic-embed-text   # For embeddings
 ```
 
@@ -184,7 +183,7 @@ For detailed technical documentation, see [CLAUDE.md](CLAUDE.md).
 ### Key Technologies
 
 - **PyMuPDF**: High-quality PDF text extraction
-- **Ollama**: Local LLM ecosystem (gemma3:4b-it-qat for metadata, mistral:latest for chat)
+- **Ollama**: Local LLM ecosystem (gemma3:4b-it-qat for both metadata and chat)
 - **MemVid**: Video-based indexing and QR code generation
 - **FAISS**: Vector similarity search
 - **Token-based Processing**: Optimal chunk sizes for RAG
@@ -205,8 +204,7 @@ ollama serve
 **Missing Models**
 ```bash
 # Pull required models
-ollama pull mistral:latest      # For chat responses
-ollama pull gemma3:4b-it-qat   # For metadata extraction
+ollama pull gemma3:4b-it-qat   # For chat responses and metadata
 ollama pull nomic-embed-text   # For embeddings
 ```
 
