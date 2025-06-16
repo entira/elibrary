@@ -153,8 +153,8 @@ class TextChunker:
         if not text.strip():
             return []
         
-        # Tokenize the entire text
-        tokens = self.tokenizer.encode(text)
+        # Tokenize the entire text, disabling special token checks
+        tokens = self.tokenizer.encode(text, disallowed_special=())
         
         if len(tokens) <= self.chunk_size:
             # Text is small enough to be a single chunk

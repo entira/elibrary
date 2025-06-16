@@ -129,6 +129,12 @@ class TextExtractor:
         text = text.replace('\ufffd', '')  # Remove replacement characters
         text = text.replace('\x00', '')   # Remove more null variants
         
+        # Remove special tokens that can cause tokenizer issues
+        text = text.replace('<|endoftext|>', '')
+        text = text.replace('<|startoftext|>', '')
+        text = text.replace('<|im_start|>', '')
+        text = text.replace('<|im_end|>', '')
+        
         # Fix weird spacing patterns common in academic PDFs
         text = re.sub(r'([a-z])\s+([a-z])(?=\s)', r'\1\2', text)  # Fix "w o r d" -> "word"
         text = re.sub(r'\b([A-Z])\s+([a-z])', r'\1\2', text)  # Fix "T ext" -> "Text"
