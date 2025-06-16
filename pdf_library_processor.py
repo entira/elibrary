@@ -257,43 +257,274 @@ class EnhancedChunk:
 
 
 class PDFLibraryProcessorV2:
-    """Enhanced PDF processor with detailed page tracking."""
+    """Enhanced PDF processor with detailed page tracking and multi-library support."""
     
-    def __init__(self, pdf_dir: str = "./library/1/pdf", output_dir: str = "./library/1/data", n_workers: int = None, force_reprocess: bool = False):
-        self.pdf_dir = Path(pdf_dir)
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+    def __init__(self, library_root: str = "./library", n_workers: int = None, force_reprocess: bool = False):
+        self.library_root = Path(library_root)
+        self.library_root.mkdir(exist_ok=True)
         self.force_reprocess = force_reprocess
         
         # Set worker count
-        encoder_workers = n_workers if n_workers else cpu_count()
+        self.encoder_workers = n_workers if n_workers else cpu_count()
         
-        # Initialize embedder and encoder
+        # Initialize embedder
         self.embedder = OllamaEmbedder()
-        
-        # Suppress all warnings during MemvidEncoder initialization
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            self.encoder = MemvidEncoder()
-            
-            # Apply monkey patch for parallel QR generation
-            self.encoder = monkey_patch_parallel_qr_generation(self.encoder, encoder_workers)
-            print(f"🚀 MemvidEncoder configured with {encoder_workers} workers for parallel QR generation")
-        
-        # Get already processed PDFs if not forcing reprocess
-        index_path = self.output_dir / "library_index.json"
-        self.processed_pdfs = get_processed_pdfs_from_index(index_path) if not force_reprocess else set()
         
         # Initialize tokenizer for token-based chunking
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 compatible encoding
-        
-        # Track page offsets for each processed file
-        self.page_offsets = {}
         
         # Chunk configuration - token-based sliding window
         self.chunk_size_tokens = 500    # Target tokens per chunk (optimal for RAG)
         self.overlap_percentage = 0.15  # 15% overlap between chunks
         self.overlap_tokens = int(self.chunk_size_tokens * self.overlap_percentage)  # 75 tokens
+    
+    def discover_libraries(self) -> List[Dict[str, Any]]:
+        """Discover all library instances with PDF content."""
+        libraries = []
+        
+        if not self.library_root.exists():
+            return libraries
+        
+        # Search for numbered library directories
+        for item in self.library_root.iterdir():
+            if item.is_dir() and item.name.isdigit():
+                pdf_dir = item / "pdf"
+                data_dir = item / "data"
+                
+                if pdf_dir.exists():
+                    # Check for PDF files
+                    pdf_files = list(pdf_dir.glob("*.pdf"))
+                    if pdf_files:
+                        # Check if library is already processed
+                        index_file = data_dir / "library_index.json"
+                        video_file = data_dir / "library.mp4"
+                        
+                        is_processed = (
+                            index_file.exists() and 
+                            video_file.exists() and 
+                            not self.force_reprocess
+                        )
+                        
+                        libraries.append({
+                            "id": item.name,
+                            "pdf_dir": pdf_dir,
+                            "data_dir": data_dir,
+                            "pdf_count": len(pdf_files),
+                            "is_processed": is_processed,
+                            "index_file": index_file,
+                            "video_file": video_file
+                        })
+        
+        # Sort by library ID (numeric)
+        libraries.sort(key=lambda x: int(x["id"]))
+        return libraries
+    
+    def process_single_library(self, library_info: Dict[str, Any]) -> bool:
+        """Process a single library instance."""
+        library_id = library_info["id"]
+        pdf_dir = library_info["pdf_dir"]
+        data_dir = library_info["data_dir"]
+        
+        print(f"\n📚 Processing Library {library_id}")
+        print(f"   📂 PDF Directory: {pdf_dir}")
+        print(f"   📂 Data Directory: {data_dir}")
+        
+        # Create data directory
+        data_dir.mkdir(exist_ok=True)
+        
+        # Initialize encoder for this library
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            encoder = MemvidEncoder()
+            
+            # Apply monkey patch for parallel QR generation
+            encoder = monkey_patch_parallel_qr_generation(encoder, self.encoder_workers)
+        
+        # Get already processed PDFs for this library
+        index_path = data_dir / "library_index.json"
+        processed_pdfs = get_processed_pdfs_from_index(index_path) if not self.force_reprocess else set()
+        
+        # Track page offsets for this library
+        page_offsets = {}
+        
+        # Process PDFs in this library
+        pdf_files = list(pdf_dir.glob("*.pdf"))
+        processed_count = 0
+        skipped_count = 0
+        
+        print(f"   📄 Found {len(pdf_files)} PDF files")
+        
+        for i, pdf_path in enumerate(pdf_files, 1):
+            print(f"   [{i}/{len(pdf_files)}] Processing: {pdf_path.name}")
+            
+            if pdf_path.name in processed_pdfs:
+                print(f"     ✅ Skipped (already processed)")
+                skipped_count += 1
+                continue
+            
+            if self.process_pdf_for_library(pdf_path, encoder, page_offsets):
+                processed_count += 1
+        
+        # Build video and index if we processed any files
+        if processed_count > 0 or (skipped_count > 0 and self.force_reprocess):
+            video_path = str(data_dir / "library.mp4")
+            index_path = str(data_dir / "library_index.json")
+            
+            self.create_enhanced_index_for_library(encoder, video_path, index_path, page_offsets)
+            
+            print(f"   ✅ Library {library_id} completed!")
+            print(f"      📊 Processed: {processed_count} new, Skipped: {skipped_count}")
+            return True
+        elif skipped_count > 0:
+            print(f"   ✅ Library {library_id} already processed (skipped {skipped_count} files)")
+            return True
+        else:
+            print(f"   ❌ No PDFs processed in Library {library_id}")
+            return False
+    
+    def process_pdf_for_library(self, pdf_path: Path, encoder: 'MemvidEncoder', page_offsets: Dict) -> bool:
+        """Process a single PDF for a specific library encoder."""
+        try:
+            # Extract text with page mapping and detect page offset
+            print(f"     📄 Extracting text from {pdf_path.name}...")
+            page_texts, num_pages, page_offset = self.extract_text_with_pages(pdf_path)
+            
+            if not page_texts:
+                print(f"     ❌ Warning: No text extracted from {pdf_path.name}")
+                return False
+            
+            # Create enhanced chunks with page offset correction
+            print(f"     🔧 Creating enhanced chunks...")
+            enhanced_chunks = self.create_enhanced_chunks(page_texts, page_offset)
+            
+            if not enhanced_chunks:
+                print(f"     ❌ Warning: No chunks created from {pdf_path.name}")
+                return False
+            
+            print(f"     📊 Pages: {num_pages}, Enhanced chunks: {len(enhanced_chunks)}")
+            
+            # Store page offset for this file
+            page_offsets[str(pdf_path)] = page_offset
+            
+            # Get sample text for metadata extraction (first 10 chunks)
+            sample_chunks = enhanced_chunks[:10]
+            sample_text = "\n".join([chunk.text for chunk in sample_chunks])
+            
+            # Extract metadata using Ollama
+            print(f"     🤖 Extracting metadata...")
+            metadata = self.extract_metadata_with_ollama(sample_text)
+            
+            print(f"     📚 Title: {metadata['title'][:60]}{'...' if len(metadata['title']) > 60 else ''}")
+            print(f"     👤 Authors: {metadata['authors'][:50]}{'...' if len(metadata['authors']) > 50 else ''}")
+            print(f"     📅 Year: {metadata['year']}")
+            
+            # Add chunks to encoder with enhanced metadata
+            for chunk in enhanced_chunks:
+                chunk_metadata = {
+                    "file_name": pdf_path.name,
+                    "title": metadata["title"],
+                    "authors": metadata["authors"],
+                    "publishers": metadata["publishers"],
+                    "year": metadata["year"],
+                    "doi": metadata["doi"],
+                    "num_pages": num_pages,
+                    **chunk.to_dict()  # Add enhanced chunk metadata
+                }
+                
+                # Add to encoder
+                encoder.add_chunks([chunk.text])
+                
+                # Store metadata separately for later association
+                if not hasattr(encoder, '_enhanced_metadata'):
+                    encoder._enhanced_metadata = []
+                encoder._enhanced_metadata.append(chunk_metadata)
+            
+            print(f"     ✅ Added {len(enhanced_chunks)} chunks with page references")
+            return True
+            
+        except Exception as e:
+            print(f"     ❌ Error processing {pdf_path.name}: {e}")
+            return False
+    
+    def create_enhanced_index_for_library(self, encoder: 'MemvidEncoder', video_path: str, index_path: str, page_offsets: Dict):
+        """Create enhanced index for a specific library."""
+        try:
+            # Build video with suppressed warnings
+            print("     🎬 Building video...")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                result = encoder.build_video(video_path, index_path)
+            
+            # Enhance the index with our metadata
+            if hasattr(encoder, '_enhanced_metadata'):
+                print("     📋 Enhancing index with detailed metadata...")
+                
+                # Read the basic index
+                with open(index_path, 'r', encoding='utf-8') as f:
+                    index_data = json.load(f)
+                
+                # Enhance chunks with our metadata
+                if 'metadata' in index_data and len(index_data['metadata']) == len(encoder._enhanced_metadata):
+                    for i, chunk in enumerate(index_data['metadata']):
+                        chunk['enhanced_metadata'] = encoder._enhanced_metadata[i]
+                
+                # Add summary statistics
+                index_data['enhanced_stats'] = self._calculate_enhanced_stats_for_library(encoder._enhanced_metadata, page_offsets)
+                
+                # Write enhanced index
+                with open(index_path, 'w', encoding='utf-8') as f:
+                    json.dump(index_data, f, indent=2, ensure_ascii=False)
+                
+                print("     ✅ Enhanced index created successfully!")
+            
+        except Exception as e:
+            print(f"     ❌ Error creating enhanced index: {e}")
+    
+    def _calculate_enhanced_stats_for_library(self, metadata_list: List[Dict], page_offsets: Dict) -> Dict[str, Any]:
+        """Calculate enhanced statistics for a specific library."""
+        if not metadata_list:
+            return {}
+        
+        # Count by file
+        files = {}
+        total_pages = set()
+        cross_page_chunks = 0
+        
+        for meta in metadata_list:
+            file_name = meta.get('file_name', 'Unknown')
+            start_page = meta.get('start_page', 0)
+            end_page = meta.get('end_page', 0)
+            
+            if file_name not in files:
+                files[file_name] = {
+                    'chunks': 0,
+                    'pages': set(),
+                    'title': meta.get('title', ''),
+                    'authors': meta.get('authors', ''),
+                    'year': meta.get('year', '')
+                }
+            
+            files[file_name]['chunks'] += 1
+            files[file_name]['pages'].add(start_page)
+            if end_page != start_page:
+                files[file_name]['pages'].add(end_page)
+                cross_page_chunks += 1
+            
+            total_pages.add(f"{file_name}:{start_page}")
+        
+        # Convert sets to counts
+        for file_name in files:
+            files[file_name]['unique_pages'] = len(files[file_name]['pages'])
+            files[file_name]['pages'] = list(files[file_name]['pages'])
+        
+        return {
+            'total_files': len(files),
+            'total_chunks': len(metadata_list),
+            'total_unique_pages': len(total_pages),
+            'cross_page_chunks': cross_page_chunks,
+            'files': files,
+            'page_offsets': page_offsets
+        }
         
     def extract_metadata_with_ollama(self, sample_text: str) -> Dict[str, str]:
         """Extract metadata using Ollama mistral:latest model."""
@@ -578,220 +809,66 @@ class PDFLibraryProcessorV2:
         
         return cross_chunks
     
-    def process_pdf_enhanced(self, pdf_path: Path) -> bool:
-        """Process single PDF with enhanced chunking."""
-        try:
-            # Check if already processed is handled in process_library now
-            
-            # Extract text with page mapping and detect page offset
-            print(f"  📄 Extracting text from {pdf_path.name}...")
-            page_texts, num_pages, page_offset = self.extract_text_with_pages(pdf_path)
-            
-            if not page_texts:
-                print(f"  ❌ Warning: No text extracted from {pdf_path.name}")
-                return False
-            
-            # Create enhanced chunks with page offset correction
-            print(f"  🔧 Creating enhanced chunks...")
-            enhanced_chunks = self.create_enhanced_chunks(page_texts, page_offset)
-            
-            if not enhanced_chunks:
-                print(f"  ❌ Warning: No chunks created from {pdf_path.name}")
-                return False
-            
-            print(f"  📊 Pages: {num_pages}, Enhanced chunks: {len(enhanced_chunks)}")
-            
-            # Store page offset for this file
-            self.page_offsets[str(pdf_path)] = page_offset
-            
-            # Get sample text for metadata extraction (first 10 chunks)
-            sample_chunks = enhanced_chunks[:10]
-            sample_text = "\n".join([chunk.text for chunk in sample_chunks])
-            
-            # Extract metadata using Ollama
-            print(f"  🤖 Extracting metadata...")
-            metadata = self.extract_metadata_with_ollama(sample_text)
-            
-            print(f"  📚 Title: {metadata['title'][:60]}{'...' if len(metadata['title']) > 60 else ''}")
-            print(f"  👤 Authors: {metadata['authors'][:50]}{'...' if len(metadata['authors']) > 50 else ''}")
-            print(f"  📅 Year: {metadata['year']}")
-            
-            # Add chunks to memvid with enhanced metadata
-            for chunk in enhanced_chunks:
-                chunk_metadata = {
-                    "file_name": pdf_path.name,
-                    "title": metadata["title"],
-                    "authors": metadata["authors"],
-                    "publishers": metadata["publishers"],
-                    "year": metadata["year"],
-                    "doi": metadata["doi"],
-                    "num_pages": num_pages,
-                    **chunk.to_dict()  # Add enhanced chunk metadata
-                }
-                
-                # Add to encoder (we need to use add_chunks method)
-                self.encoder.add_chunks([chunk.text])
-                
-                # Store metadata separately for later association
-                if not hasattr(self.encoder, '_enhanced_metadata'):
-                    self.encoder._enhanced_metadata = []
-                self.encoder._enhanced_metadata.append(chunk_metadata)
-            
-            print(f"  ✅ Added {len(enhanced_chunks)} chunks with page references")
-            return True
-            
-        except Exception as e:
-            print(f"Error processing {pdf_path.name}: {e}")
-            return False
     
-    def create_enhanced_index(self, video_path: str, index_path: str):
-        """Create enhanced index with detailed metadata."""
-        try:
-            # Build video with suppressed warnings
-            print("Building video...")
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                result = self.encoder.build_video(video_path, index_path)
-            
-            # Enhance the index with our metadata
-            if hasattr(self.encoder, '_enhanced_metadata'):
-                print("Enhancing index with detailed metadata...")
-                
-                # Read the basic index
-                with open(index_path, 'r', encoding='utf-8') as f:
-                    index_data = json.load(f)
-                
-                # Enhance chunks with our metadata
-                if 'metadata' in index_data and len(index_data['metadata']) == len(self.encoder._enhanced_metadata):
-                    for i, chunk in enumerate(index_data['metadata']):
-                        chunk['enhanced_metadata'] = self.encoder._enhanced_metadata[i]
-                
-                # Add summary statistics
-                index_data['enhanced_stats'] = self._calculate_enhanced_stats()
-                
-                # Write enhanced index
-                with open(index_path, 'w', encoding='utf-8') as f:
-                    json.dump(index_data, f, indent=2, ensure_ascii=False)
-                
-                print("✅ Enhanced index created successfully!")
-            
-        except Exception as e:
-            print(f"Error creating enhanced index: {e}")
-    
-    def _calculate_enhanced_stats(self) -> Dict[str, Any]:
-        """Calculate enhanced statistics."""
-        if not hasattr(self.encoder, '_enhanced_metadata'):
-            return {}
-        
-        metadata_list = self.encoder._enhanced_metadata
-        
-        # Count by file
-        files = {}
-        total_pages = set()
-        cross_page_chunks = 0
-        
-        for meta in metadata_list:
-            file_name = meta.get('file_name', 'Unknown')
-            start_page = meta.get('start_page', 0)
-            end_page = meta.get('end_page', 0)
-            
-            if file_name not in files:
-                files[file_name] = {
-                    'chunks': 0,
-                    'pages': set(),
-                    'title': meta.get('title', ''),
-                    'authors': meta.get('authors', ''),
-                    'year': meta.get('year', '')
-                }
-            
-            files[file_name]['chunks'] += 1
-            files[file_name]['pages'].add(start_page)
-            if end_page != start_page:
-                files[file_name]['pages'].add(end_page)
-                cross_page_chunks += 1
-            
-            total_pages.add(f"{file_name}:{start_page}")
-        
-        # Convert sets to counts
-        for file_name in files:
-            files[file_name]['unique_pages'] = len(files[file_name]['pages'])
-            files[file_name]['pages'] = list(files[file_name]['pages'])
-        
-        return {
-            'total_files': len(files),
-            'total_chunks': len(metadata_list),
-            'total_unique_pages': len(total_pages),
-            'cross_page_chunks': cross_page_chunks,
-            'files': files,
-            'page_offsets': getattr(self, 'page_offsets', {})
-        }
     
     def process_library(self):
-        """Process entire PDF library with enhanced metadata."""
-        if not self.pdf_dir.exists():
-            print(f"Error: PDF directory {self.pdf_dir} does not exist!")
+        """Process all PDF libraries with enhanced metadata and multi-library support."""
+        print("🔍 Discovering library instances...")
+        
+        libraries = self.discover_libraries()
+        
+        if not libraries:
+            print(f"❌ No libraries found in {self.library_root}")
+            print("📁 Expected structure: library/[1,2,3,...]/pdf/ with PDF files")
+            print("💡 Create directories and add PDFs: mkdir -p library/1/pdf && cp *.pdf library/1/pdf/")
             return
         
-        pdf_files = list(self.pdf_dir.glob("*.pdf"))
+        print(f"📚 Found {len(libraries)} library instances:")
+        total_processed = 0
+        total_skipped = 0
         
-        if not pdf_files:
-            print(f"No PDF files found in {self.pdf_dir}")
-            return
+        # Display overview
+        for lib in libraries:
+            status = "✅ Processed" if lib["is_processed"] else "⏳ Needs processing"
+            print(f"   Library {lib['id']}: {lib['pdf_count']} PDFs - {status}")
         
-        print(f"Found {len(pdf_files)} PDF files to process")
-        print(f"Output directory: {self.output_dir}")
-        print(f"Chunk size: {self.chunk_size_tokens} tokens (~{self.chunk_size_tokens * 4} chars)")
-        print(f"Overlap: {self.overlap_tokens} tokens ({self.overlap_percentage*100:.0f}%)")
-        print(f"Chunking method: Token-based sliding window")
+        print(f"\n🔧 Processing configuration:")
+        print(f"   Chunk size: {self.chunk_size_tokens} tokens (~{self.chunk_size_tokens * 4} chars)")
+        print(f"   Overlap: {self.overlap_tokens} tokens ({self.overlap_percentage*100:.0f}%)")
+        print(f"   Chunking method: Token-based sliding window")
+        print(f"   Workers: {self.encoder_workers}")
         print()
         
-        processed_count = 0
-        skipped_count = 0
-        
-        # Process each PDF with progress tracking
-        for i, pdf_path in enumerate(pdf_files, 1):
-            print(f"\n[{i}/{len(pdf_files)}] Processing: {pdf_path.name}")
-            if pdf_path.name in self.processed_pdfs:
-                print(f"  ✅ Skipped (already processed)")
-                skipped_count += 1
-            elif self.process_pdf_enhanced(pdf_path):
-                processed_count += 1
-        
-        # Check if we have any content to work with
-        video_path = str(self.output_dir / "library.mp4")
-        index_path = str(self.output_dir / "library_index.json")
-        
-        if processed_count == 0 and skipped_count == 0:
-            print("No PDFs were successfully processed!")
-            return
-        elif processed_count == 0 and skipped_count > 0:
-            # All PDFs were skipped, check if video already exists
-            if Path(video_path).exists() and Path(index_path).exists():
-                print(f"\n✅ All {skipped_count} PDFs already processed!")
-                print(f"🎥 Existing video: {self.output_dir / 'library.mp4'}")
-                print(f"📋 Existing index: {self.output_dir / 'library_index.json'}")
-                print(f"📄 Use --force-reprocess to regenerate video")
-                return
-            else:
-                print(f"Warning: {skipped_count} PDFs were skipped but no video exists!")
-                print("Use --force-reprocess to regenerate video")
-                return
-        
-        print(f"\nBuilding enhanced video index...")
-        print(f"Processed {processed_count} new PDFs (skipped {skipped_count})")
-        
-        # Build final video and enhanced index (only if we processed new PDFs)
-        try:
-            self.create_enhanced_index(video_path, index_path)
+        # Process each library
+        for library_info in libraries:
+            if library_info["is_processed"]:
+                print(f"\n📚 Library {library_info['id']}: Already processed (use --force-reprocess to rebuild)")
+                total_skipped += library_info["pdf_count"]
+                continue
             
-            print(f"\n✅ SUCCESS!")
-            print(f"📚 Processed {processed_count} PDF books (skipped {skipped_count})")
-            print(f"🎥 Enhanced video: {self.output_dir / 'library.mp4'}")
-            print(f"📋 Enhanced index: {self.output_dir / 'library_index.json'}")
-            print(f"📄 Each chunk includes detailed page references!")
-            
-        except Exception as e:
-            print(f"Error building enhanced video: {e}")
+            success = self.process_single_library(library_info)
+            if success:
+                total_processed += library_info["pdf_count"]
+        
+        # Final summary
+        print(f"\n🎉 MULTI-LIBRARY PROCESSING COMPLETE!")
+        print(f"📊 Summary:")
+        print(f"   📚 Libraries processed: {len([lib for lib in libraries if not lib['is_processed']])}")
+        print(f"   📄 Total PDFs processed: {total_processed}")
+        print(f"   ⏭️  Total PDFs skipped: {total_skipped}")
+        
+        if total_processed > 0:
+            print(f"\n💾 Generated files:")
+            for lib in libraries:
+                if lib["data_dir"].exists():
+                    video_file = lib["data_dir"] / "library.mp4"
+                    index_file = lib["data_dir"] / "library_index.json"
+                    if video_file.exists() and index_file.exists():
+                        print(f"   Library {lib['id']}: {lib['data_dir']}/")
+                        print(f"      🎥 {video_file.name}")
+                        print(f"      📋 {index_file.name}")
+        
+        print(f"\n💬 Next step: Run 'python3 pdf_chat.py' to chat with your libraries!")
 
 
 def main():
@@ -809,15 +886,17 @@ def main():
     os.environ['PYTHONWARNINGS'] = 'ignore'
     os.environ['MEMVID_QUIET'] = '1'
     
-    parser = argparse.ArgumentParser(description='PDF Library Processor with Skip Optimization')
+    parser = argparse.ArgumentParser(description='Multi-Library PDF Processor with Skip Optimization')
+    parser.add_argument('--library-root', type=str, default='./library',
+                       help='Root directory containing library instances (default: ./library)')
     parser.add_argument('--max-workers', type=int, default=None,
                        help='Maximum number of workers for parallel processing (default: auto)')
     parser.add_argument('--force-reprocess', action='store_true',
-                       help='Force reprocessing of all PDFs (ignore existing index)')
+                       help='Force reprocessing of all PDFs (ignore existing indexes)')
     
     args = parser.parse_args()
     
-    processor = PDFLibraryProcessorV2(n_workers=args.max_workers, force_reprocess=args.force_reprocess)
+    processor = PDFLibraryProcessorV2(library_root=args.library_root, n_workers=args.max_workers, force_reprocess=args.force_reprocess)
     processor.process_library()
 
 

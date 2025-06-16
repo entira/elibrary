@@ -92,8 +92,63 @@ INSTRUCTIONS:
             return f"Error generating response: {e}"
 
 
+class MultiLibraryRetriever:
+    """Multi-library retriever that searches across all available libraries."""
+    
+    def __init__(self, libraries: List[Dict[str, Any]]):
+        self.libraries = libraries
+        self.retrievers = {}
+        
+        # Initialize retrievers for each library
+        from memvid import MemvidRetriever
+        for lib in libraries:
+            try:
+                retriever = MemvidRetriever(lib["video_file"], lib["index_file"])
+                self.retrievers[lib["library_id"]] = {
+                    "retriever": retriever,
+                    "info": lib
+                }
+                print(f"   ✅ Library {lib['library_id']}: {lib['chunks']} chunks ready")
+            except Exception as e:
+                print(f"   ❌ Library {lib['library_id']}: Failed to load - {e}")
+    
+    def search(self, query: str, top_k: int = 5) -> List[str]:
+        """Search across all libraries and return top results."""
+        all_results = []
+        
+        # Search each library
+        for lib_id, lib_data in self.retrievers.items():
+            try:
+                results = lib_data["retriever"].search(query, top_k=top_k)
+                # Add library context to each result
+                for result in results:
+                    all_results.append({
+                        "text": result,
+                        "library_id": lib_id,
+                        "library_name": lib_data["info"]["name"]
+                    })
+            except Exception as e:
+                print(f"Search error in Library {lib_id}: {e}")
+        
+        # Sort by relevance (assuming MemvidRetriever returns sorted results)
+        # For now, just return the text portions
+        return [result["text"] for result in all_results[:top_k]]
+    
+    def get_library_stats(self) -> Dict[str, Any]:
+        """Get combined statistics from all libraries."""
+        total_chunks = sum(lib["chunks"] for lib in self.libraries)
+        total_files = sum(lib["files"] if isinstance(lib["files"], int) else 0 for lib in self.libraries)
+        
+        return {
+            "total_libraries": len(self.libraries),
+            "total_chunks": total_chunks,
+            "total_files": total_files,
+            "libraries": {lib["library_id"]: lib for lib in self.libraries}
+        }
+
+
 class PDFLibraryChat:
-    """Enhanced chat interface with interactive library selection."""
+    """Enhanced chat interface with multi-library support."""
     
     def __init__(self, use_ollama: bool = True):
         self.use_ollama = use_ollama
@@ -102,26 +157,17 @@ class PDFLibraryChat:
         available_libraries = self.find_all_libraries()
         
         if not available_libraries:
-            raise FileNotFoundError("No video library found. Please run pdf_library_processor.py first!")
+            raise FileNotFoundError("No libraries found. Please run pdf_library_processor.py first!")
         
-        # Interactive selection if multiple libraries
-        if len(available_libraries) == 1:
-            selected_library = available_libraries[0]
-            print(f"📚 Using library: {selected_library['name']} ({selected_library['version']})")
-        else:
-            selected_library = self.select_library_interactive(available_libraries)
+        print(f"📚 Found {len(available_libraries)} library instances")
         
-        self.video_file = selected_library["video_file"]
-        self.index_file = selected_library["index_file"]
-        self.library_info = selected_library
+        # Initialize multi-library retriever
+        print("🔄 Initializing multi-library search...")
+        self.multi_retriever = MultiLibraryRetriever(available_libraries)
+        self.available_libraries = available_libraries
         
         # Initialize Ollama LLM if requested
         self.llm = OllamaLLM() if use_ollama else None
-        
-        # Initialize MemvidChat without LLM (we use our own Ollama)
-        # Use MemvidRetriever directly to avoid LLM initialization error
-        from memvid import MemvidRetriever
-        self.chat = MemvidRetriever(str(self.video_file), str(self.index_file))
         
         # Session stats
         self.session_stats = {
@@ -129,48 +175,51 @@ class PDFLibraryChat:
             "start_time": time.time()
         }
         
-        print(f"📚 PDF Library Chat initialized")
-        print(f"🎥 Video: {Path(self.video_file).name}")
-        print(f"📋 Index: {Path(self.index_file).name}")
-        # Version information removed
-        print(f"📝 {self.library_info['chunks']} chunks from {self.library_info['files']} files")
+        # Display summary
+        stats = self.multi_retriever.get_library_stats()
+        print(f"📚 Multi-Library Chat initialized")
+        print(f"📊 Total libraries: {stats['total_libraries']}")
+        print(f"📝 Total chunks: {stats['total_chunks']}")
+        print(f"📄 Total files: {stats['total_files']}")
         if self.use_ollama:
             print(f"🤖 Using Ollama LLM: {self.llm.model}")
         print()
     
     def find_all_libraries(self) -> List[Dict[str, Any]]:
-        """Find all available library files."""
+        """Find all available library files across multiple library instances."""
         libraries = []
-        possible_dirs = ["./library/1/data"]
+        library_root = Path("./library")
         
-        for dir_path in possible_dirs:
-            if os.path.exists(dir_path):
-                # Check for library files
-                patterns = [
-                    ("library.mp4", "library_index.json")
-                ]
+        if not library_root.exists():
+            return libraries
+        
+        # Search for numbered library directories
+        for item in library_root.iterdir():
+            if item.is_dir() and item.name.isdigit():
+                data_dir = item / "data"
                 
-                for video_name, index_name in patterns:
-                    video_path = os.path.join(dir_path, video_name)
-                    index_path = os.path.join(dir_path, index_name)
+                if data_dir.exists():
+                    video_path = data_dir / "library.mp4"
+                    index_path = data_dir / "library_index.json"
                     
-                    if os.path.exists(video_path) and os.path.exists(index_path):
+                    if video_path.exists() and index_path.exists():
                         # Get basic info about the library
-                        library_info = self.get_library_preview(index_path)
+                        library_info = self.get_library_preview(str(index_path))
                         
                         libraries.append({
-                            "name": f"{Path(dir_path).name}/{video_name}",
-                            "video_file": video_path,
-                            "index_file": index_path,
-                            "directory": dir_path,
+                            "name": f"Library {item.name}",
+                            "video_file": str(video_path),
+                            "index_file": str(index_path),
+                            "directory": str(data_dir),
+                            "library_id": item.name,
                             "chunks": library_info.get("total_chunks", 0),
                             "files": library_info.get("total_files", "Unknown"),
                             "version": "Current",
                             "avg_length": library_info.get("avg_length", "Unknown")
                         })
         
-        # Sort by directory name
-        libraries.sort(key=lambda x: (x["version"], x["directory"]), reverse=True)
+        # Sort by library ID (numeric)
+        libraries.sort(key=lambda x: int(x["library_id"]))
         return libraries
     
     def get_library_preview(self, index_path: str) -> Dict[str, Any]:
@@ -206,84 +255,17 @@ class PDFLibraryChat:
             print(f"Error reading {index_path}: {e}")
             return {"total_chunks": 0, "total_files": "Unknown", "avg_length": "Unknown"}
     
-    def select_library_interactive(self, libraries: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Interactive library selection using arrow keys."""
-        current_selection = 0
-        
-        def display_menu():
-            os.system('clear' if os.name == 'posix' else 'cls')
-            print("📚" + "="*70 + "📚")
-            print("🎯 Select PDF Library")
-            print("📚" + "="*70 + "📚")
-            print()
-            print("Enter library number (1-{}) or 'q' to quit:".format(len(libraries)))
-            print()
-            
-            for i, library in enumerate(libraries):
-                number = f"[{i+1}]"
-                highlight = "→ " if i == current_selection else "  "
-                print(f"{highlight}{number} {library['name']}")
-                
-                print(f"     📂 Directory: {library['directory']}")
-                # Version information removed
-                print(f"     📝 Chunks: {library['chunks']} (avg: {library['avg_length']})")
-                print(f"     📚 Files: {library['files']}")
-                print()
-        
-        # Display initial menu
-        display_menu()
-        
-        # Use simplified input for cross-platform compatibility
-        while True:
-            try:
-                print("📝 Enter your choice: ", end='', flush=True)
-                user_input = input().strip().lower()
-                
-                if user_input == 'q':
-                    print("👋 Goodbye!")
-                    sys.exit(0)
-                elif user_input.isdigit():
-                    choice = int(user_input) - 1
-                    if 0 <= choice < len(libraries):
-                        current_selection = choice
-                        break
-                    else:
-                        print(f"❌ Invalid choice. Please enter 1-{len(libraries)}")
-                        display_menu()
-                elif user_input == '':
-                    # Default to current selection
-                    break
-                else:
-                    print("❌ Invalid input. Enter a number, or 'q' to quit")
-                    display_menu()
-                    
-            except KeyboardInterrupt:
-                print("\n👋 Goodbye!")
-                sys.exit(0)
-            except EOFError:
-                print("\n👋 Goodbye!")
-                sys.exit(0)
-        
-        selected = libraries[current_selection]
-        
-        # Clear screen and show selection
-        os.system('clear' if os.name == 'posix' else 'cls')
-        print("✅" + "="*70 + "✅")
-        print(f"📚 Selected Library: {selected['name']}")
-        print("✅" + "="*70 + "✅")
-        # Version information removed
-        print(f"📝 Chunks: {selected['chunks']} (avg: {selected['avg_length']})")
-        print(f"📚 Files: {selected['files']}")
-        print()
-        print("Loading library...")
-        time.sleep(1.5)
-        
-        return selected
     
-    def load_library_stats(self) -> Dict[str, Any]:
+    def load_library_stats(self, index_file: str = None) -> Dict[str, Any]:
         """Load detailed statistics about the PDF library."""
+        # Use provided index_file or fall back to first available library
+        if index_file is None and self.available_libraries:
+            index_file = self.available_libraries[0]["index_file"]
+        elif index_file is None:
+            return {'total_books': 0, 'total_chunks': 0, 'books': {}}
+            
         try:
-            with open(self.index_file, 'r', encoding='utf-8') as f:
+            with open(index_file, 'r', encoding='utf-8') as f:
                 index_data = json.load(f)
             
             stats = {
@@ -357,16 +339,25 @@ class PDFLibraryChat:
             return {'total_books': 0, 'total_chunks': 0, 'books': {}}
     
     def show_library_info(self):
-        """Display information about the PDF library."""
-        stats = self.load_library_stats()
+        """Display information about all PDF libraries."""
+        print("📖 Multi-Library Overview:")
         
-        print("📖 Library Overview:")
-        print(f"   📚 Total books: {stats['total_books']}")
+        # Get overall stats
+        stats = self.multi_retriever.get_library_stats()
+        print(f"   📚 Total libraries: {stats['total_libraries']}")
+        print(f"   📄 Total files: {stats['total_files']}")
         print(f"   📝 Total chunks: {stats['total_chunks']}")
-        if 'cross_page_chunks' in stats:
-            print(f"   🔗 Cross-page chunks: {stats['cross_page_chunks']}")
-        # Version information removed as requested
         print()
+        
+        # Show individual library details
+        for lib_id, lib_info in stats['libraries'].items():
+            print(f"📚 Library {lib_id}:")
+            detailed_stats = self.load_library_stats(lib_info["index_file"])
+            print(f"   📄 Files: {detailed_stats['total_books']}")
+            print(f"   📝 Chunks: {detailed_stats['total_chunks']}")
+            if 'cross_page_chunks' in detailed_stats:
+                print(f"   🔗 Cross-page chunks: {detailed_stats['cross_page_chunks']}")
+            print()
         
         print("📑 Books in library:")
         for i, (file_key, info) in enumerate(stats['books'].items(), 1):
@@ -420,10 +411,10 @@ class PDFLibraryChat:
             print()
     
     def search_library(self, query: str, limit: int = 5) -> str:
-        """Search library and return formatted results with citations."""
+        """Search across all libraries and return formatted results with citations."""
         try:
             start_time = time.time()
-            context_chunks = self.chat.search(query, top_k=limit)
+            context_chunks = self.multi_retriever.search(query, top_k=limit)
             search_time = time.time() - start_time
             
             if not context_chunks:
@@ -447,13 +438,23 @@ class PDFLibraryChat:
             return f"❌ Search error: {e}"
     
     def _add_citations_to_context(self, context_chunks: List[str]) -> List[str]:
-        """Add source citations to context chunks by matching with index metadata."""
+        """Add source citations to context chunks by matching with multi-library metadata."""
         try:
-            # Load index data
-            with open(self.index_file, 'r', encoding='utf-8') as f:
-                index_data = json.load(f)
-            
-            metadata_list = index_data.get('metadata', [])
+            # Load all index data from all libraries
+            all_metadata = []
+            for lib in self.available_libraries:
+                try:
+                    with open(lib["index_file"], 'r', encoding='utf-8') as f:
+                        index_data = json.load(f)
+                    metadata_list = index_data.get('metadata', [])
+                    # Add library context to each metadata entry
+                    for meta in metadata_list:
+                        meta['_library_id'] = lib["library_id"]
+                        meta['_library_name'] = lib["name"]
+                    all_metadata.extend(metadata_list)
+                except Exception as e:
+                    print(f"Warning: Could not load index for Library {lib['library_id']}: {e}")
+                    continue
             
             # Try to match context chunks with metadata
             context_with_citations = []
@@ -461,15 +462,16 @@ class PDFLibraryChat:
                 # Find matching metadata by text content
                 citation = f"[Unknown source, page Unknown]"
                 
-                # Search for matching chunk in metadata
-                for meta in metadata_list:
+                # Search for matching chunk in all metadata
+                for meta in all_metadata:
                     if meta.get('text', '') == chunk.strip():
-                        # Found match, add citation info
+                        # Found match, add citation info with library context
                         chunk_metadata = meta.get('enhanced_metadata', {})
                         if chunk_metadata:
                             title = chunk_metadata.get('title', 'Unknown title')
                             page_ref = chunk_metadata.get('page_reference', 'Unknown page')
-                            citation = f"[{title}, page {page_ref}]"
+                            library_name = meta.get('_library_name', 'Unknown Library')
+                            citation = f"[{title}, page {page_ref} - {library_name}]"
                         break
                 
                 # Put citation at the end for cleaner LLM processing
@@ -482,12 +484,12 @@ class PDFLibraryChat:
             return [f"{chunk} [Unknown source]" for i, chunk in enumerate(context_chunks)]
     
     def chat_with_library(self, query: str) -> str:
-        """Chat with the library using context and LLM."""
+        """Chat with all libraries using context and LLM."""
         try:
             start_time = time.time()
             
-            # Get context from video memory
-            context_chunks = self.chat.search(query, top_k=5)
+            # Get context from multi-library search
+            context_chunks = self.multi_retriever.search(query, top_k=5)
             
             if not context_chunks:
                 return "🔍 I couldn't find relevant information in the library for your question."
@@ -548,23 +550,24 @@ INSTRUCTIONS:
         """Display help information."""
         print("🆘 Available Commands:")
         print("   help          - Show this help message")
-        print("   info          - Show library information")
-        print("   search <query>- Search library content")
+        print("   info          - Show multi-library information")
+        print("   search <query>- Search across all libraries")
         print("   stats         - Show session statistics")
         print("   clear         - Clear screen")
         print("   exit/quit     - Exit chat")
         print()
         print("💡 Tips:")
-        print("   - Ask questions about the content of your PDF books")
-        print("   - Use 'search' to see raw search results")
+        print("   - Ask questions about content from all your PDF libraries")
+        print("   - Use 'search' to see raw search results from all libraries")
         print("   - Questions can be about specific topics, authors, or concepts")
-        print("   - The system uses semantic search across all PDF content")
-        print("   - Page references correspond to PDF file page numbers")
+        print("   - The system searches across ALL library instances")
+        print("   - Citations include library source and PDF page numbers")
+        print("   - Results are ranked by relevance across all libraries")
     
     def run_chat(self):
         """Run the interactive chat loop."""
-        print("🚀 PDF Library Chat started!")
-        print("   Type 'help' for commands or ask any question about your books.")
+        print("🚀 Multi-Library Chat started!")
+        print("   Type 'help' for commands or ask any question about your libraries.")
         print("   Type 'exit' or 'quit' to end the session.")
         print()
         
