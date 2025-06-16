@@ -317,8 +317,8 @@ Your JSON output:"""
             return metadata
         
         # Pattern 3: Extract what we can from any pattern
-        # Look for years
-        year_match = re.search(r'\\b(19|20)\\d{2}\\b', name)
+        # Look for years anywhere in filename
+        year_match = re.search(r'\b(19|20)\d{2}\b', name)
         if year_match:
             metadata["year"] = year_match.group()
         
@@ -326,7 +326,7 @@ Your JSON output:"""
         if not metadata["title"] and len(name) > 5:
             # Clean up the filename for use as title
             title = re.sub(r'[_-]', ' ', name)
-            title = re.sub(r'\\s+', ' ', title)
+            title = re.sub(r'\s+', ' ', title)
             metadata["title"] = title.strip()
         
         return metadata
@@ -371,7 +371,7 @@ Your JSON output:"""
         
         # Year validation
         year = metadata.get("year", "").strip()
-        year_match = re.search(r'\\b(19|20)\\d{2}\\b', year)
+        year_match = re.search(r'\b(19|20)\d{2}\b', year)
         if year_match:
             validated["year"] = year_match.group()
         else:
@@ -397,7 +397,7 @@ Your JSON output:"""
         Returns:
             4-digit year string or empty string
         """
-        year_match = re.search(r'\\b(19|20)\\d{2}\\b', year_text)
+        year_match = re.search(r'\b(19|20)\d{2}\b', year_text)
         return year_match.group() if year_match else ""
     
     def _empty_metadata(self) -> Dict[str, str]:
