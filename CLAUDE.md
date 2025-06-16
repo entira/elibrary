@@ -9,7 +9,7 @@ Technical implementation details and architectural decisions for the eLibrary PD
 python3 pdf_library_processor.py --max-workers 8 --force-reprocess
 
 # Inspect generated metadata
-python3 -c "import json; data=json.load(open('./library/library_index.json')); print(json.dumps(data['enhanced_stats'], indent=2))"
+python3 -c "import json; data=json.load(open('./library/1/data/library_index.json')); print(json.dumps(data['enhanced_stats'], indent=2))"
 
 # Monitor memory usage during processing
 top -p $(pgrep -f pdf_library_processor)
@@ -173,7 +173,7 @@ export TOKENIZERS_PARALLELISM=false   # Disable tokenizer warnings
 python3 pdf_library_processor.py
 
 # Verify output files
-ls -la library/
+ls -la library/1/data/
 
 # Test chat functionality
 python3 pdf_chat.py

@@ -46,12 +46,13 @@ ehthumbs.db
 Thumbs.db
 
 # Large output files
-library/
+library/*/data/
+library/*/pdf/*.pdf
 memvid_out/
 memvid_out_2/
 memvid_out_v2/
 
-# PDF books (large files)
+# PDF books (large files) - legacy
 pdf_books/*.pdf
 
 # Temporary files

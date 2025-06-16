@@ -141,7 +141,7 @@ class PDFLibraryChat:
     def find_all_libraries(self) -> List[Dict[str, Any]]:
         """Find all available library files."""
         libraries = []
-        possible_dirs = ["./library"]
+        possible_dirs = ["./library/1/data"]
         
         for dir_path in possible_dirs:
             if os.path.exists(dir_path):
@@ -328,7 +328,7 @@ class PDFLibraryChat:
                 stats['total_books'] = len(books_by_file)
             else:
                 # Fallback for V1: estimate from PDF directory
-                pdf_dir = Path("./pdf_books")
+                pdf_dir = Path("./library/1/pdf")
                 if pdf_dir.exists():
                     pdf_files = list(pdf_dir.glob("*.pdf"))
                     stats['total_books'] = len(pdf_files)

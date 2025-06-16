@@ -259,7 +259,7 @@ class EnhancedChunk:
 class PDFLibraryProcessorV2:
     """Enhanced PDF processor with detailed page tracking."""
     
-    def __init__(self, pdf_dir: str = "./pdf_books", output_dir: str = "./library", n_workers: int = None, force_reprocess: bool = False):
+    def __init__(self, pdf_dir: str = "./library/1/pdf", output_dir: str = "./library/1/data", n_workers: int = None, force_reprocess: bool = False):
         self.pdf_dir = Path(pdf_dir)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
