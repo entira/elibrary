@@ -340,19 +340,10 @@ class ModularPDFProcessor:
                 
                 print(f"     🎬 Building video with {len(all_chunks)} chunks...")
                 
-                # Selective suppression to keep progress but remove debug messages
-                import sys
-                import os
-                original_stderr = sys.stderr
-                
-                try:
-                    # Suppress only stderr (warnings, debug) but keep stdout (progress bars)
-                    with open(os.devnull, 'w') as devnull, warnings.catch_warnings():
-                        sys.stderr = devnull
-                        warnings.simplefilter("ignore")
-                        result = encoder.build_video(str(video_path), str(index_path))
-                finally:
-                    sys.stderr = original_stderr
+                # Use exact same suppression as original processor
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    result = encoder.build_video(str(video_path), str(index_path))
                 
                 # Enhance index with metadata (original pattern)
                 self._enhance_index_with_metadata(encoder, index_path, page_offsets)
