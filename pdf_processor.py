@@ -45,6 +45,74 @@ except ImportError as e:
     sys.exit(1)
 
 
+def generate_single_qr_global(args):
+    """Global function for QR generation to avoid pickle issues (copy from original)."""
+    # Aggressively suppress ALL warnings in worker processes
+    import warnings
+    warnings.filterwarnings("ignore")
+    import os
+    import sys
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+    
+    # Redirect stderr to suppress any remaining warnings
+    import contextlib
+    with contextlib.redirect_stderr(open(os.devnull, 'w')):
+        frame_num, chunk_text, frames_dir_str, config = args
+        
+    try:
+        import qrcode
+        import json
+        
+        chunk_data = {"id": frame_num, "text": chunk_text, "frame": frame_num}
+        
+        # Use memvid's QR config with auto-truncation for long chunks
+        qr_config = config.get('qr', {}) if hasattr(config, 'get') else {}
+        
+        # Try with progressively shorter text if QR version exceeds 40
+        original_text = chunk_text
+        for max_chars in [len(chunk_text), 2800, 2400, 2000, 1600, 1200]:
+            try:
+                if max_chars < len(chunk_text):
+                    chunk_data["text"] = chunk_text[:max_chars] + "..."
+                else:
+                    chunk_data["text"] = chunk_text
+                    
+                qr = qrcode.QRCode(
+                    version=1,  # Let it auto-scale but with limit
+                    error_correction=getattr(qrcode.constants, f"ERROR_CORRECT_{qr_config.get('error_correction', 'M')}"),
+                    box_size=qr_config.get('box_size', 5),
+                    border=qr_config.get('border', 3)
+                )
+                qr.add_data(json.dumps(chunk_data))
+                qr.make(fit=True)
+                
+                # Check if version is acceptable
+                if qr.version <= 40:
+                    break
+            except Exception:
+                continue
+        else:
+            # Fallback: use minimal data
+            chunk_data["text"] = f"[Chunk {frame_num} - Text too long for QR]"
+            qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M)
+            qr.add_data(json.dumps(chunk_data))
+            qr.make(fit=True)
+        
+        qr_image = qr.make_image(
+            fill_color=qr_config.get('fill_color', 'black'),
+            back_color=qr_config.get('back_color', 'white')
+        )
+        
+        frame_path = os.path.join(frames_dir_str, f"frame_{frame_num:06d}.png")
+        qr_image.save(frame_path)
+        
+        return frame_num
+    except Exception as e:
+        # Suppress error messages in parallel workers
+        return None
+
+
 @dataclass
 class ProcessorConfig:
     """Configuration for PDF processor with all module settings."""
@@ -316,6 +384,10 @@ class ModularPDFProcessor:
                 
                 encoder = MemvidEncoder()
                 
+                # Apply monkey patch for parallel QR generation like original
+                if self.config.max_workers > 1:
+                    encoder = self._monkey_patch_parallel_qr_generation(encoder, self.config.max_workers)
+                
                 # Add chunks to encoder one by one (exact original pattern)
                 encoder._enhanced_metadata = []
                 
@@ -341,7 +413,9 @@ class ModularPDFProcessor:
                 print(f"     🎬 Building video with {len(all_chunks)} chunks...")
                 
                 # Use exact same suppression as original processor
-                with warnings.catch_warnings():
+                with warnings.catch_warnings(), \
+                     contextlib.redirect_stdout(StringIO()), \
+                     contextlib.redirect_stderr(StringIO()):
                     warnings.simplefilter("ignore")
                     result = encoder.build_video(str(video_path), str(index_path))
                 
@@ -405,9 +479,14 @@ class ModularPDFProcessor:
                 index_data = json.load(f)
             
             # Enhance chunks with our metadata
+            print(f"     🔍 Debug: MemVid chunks={len(index_data.get('metadata', []))}, Enhanced metadata={len(encoder._enhanced_metadata)}")
+            
             if 'metadata' in index_data and len(index_data['metadata']) == len(encoder._enhanced_metadata):
                 for i, chunk in enumerate(index_data['metadata']):
                     chunk['enhanced_metadata'] = encoder._enhanced_metadata[i]
+                print(f"     ✅ Enhanced {len(index_data['metadata'])} chunks with metadata")
+            else:
+                print(f"     ⚠️ Chunk count mismatch - cannot enhance metadata")
             
             # Add summary statistics like original
             enhanced_stats = {
@@ -427,12 +506,78 @@ class ModularPDFProcessor:
             index_data["version"] = "2.0"
             index_data["created_by"] = "ModularPDFProcessor"
             
+            # Override MemVid's default config with correct Ollama models
+            if "config" in index_data:
+                index_data["config"]["embedding"] = {
+                    "model": self.config.embedding_model,
+                    "dimension": 768  # nomic-embed-text dimension
+                }
+                index_data["config"]["llm"] = {
+                    "model": self.config.metadata_model,
+                    "max_tokens": 8192,
+                    "temperature": 0.1,
+                    "context_window": 32000,
+                    "base_url": self.config.ollama_base_url
+                }
+                # Update retrieval settings to match our config
+                index_data["config"]["retrieval"]["max_workers"] = self.config.max_workers
+                index_data["config"]["chunking"]["chunk_size"] = self.config.chunk_size
+                index_data["config"]["chunking"]["overlap"] = int(self.config.chunk_size * self.config.overlap_percentage)
+            
             # Write enhanced index
             with open(index_path, 'w', encoding='utf-8') as f:
                 json.dump(index_data, f, indent=2, ensure_ascii=False)
                 
         except Exception as e:
             print(f"     ⚠️ Could not enhance index: {e}")
+    
+    def _monkey_patch_parallel_qr_generation(self, encoder, n_workers: int):
+        """Monkey patch MemvidEncoder to use parallel QR generation (copy from original)."""
+        import types
+        from pathlib import Path
+        from concurrent.futures import ProcessPoolExecutor
+        import os
+        
+        # Capture config from processor for use in monkey patch
+        processor_config = self.config
+        
+        def _generate_qr_frames_parallel(self, temp_dir: Path, show_progress: bool = True) -> Path:
+            """Generate QR frames in parallel using ProcessPoolExecutor."""
+            frames_dir = temp_dir / "frames"
+            frames_dir.mkdir()
+            
+            # Prepare data for parallel processing
+            chunk_tasks = [(i, chunk, str(frames_dir), {}) 
+                          for i, chunk in enumerate(self.chunks)]
+            
+            # Don't show worker count message as it duplicates progress bar
+            # The progress bar itself shows the parallel generation
+            
+            # Generate QR frames in parallel using global function
+            with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                if show_progress and not processor_config.quiet:
+                    # Show progress with suppressed worker stderr
+                    import contextlib
+                    from tqdm import tqdm
+                    original_stderr = sys.stderr
+                    try:
+                        # Temporarily suppress stderr only for worker warnings, keep tqdm visible
+                        with open(os.devnull, 'w') as devnull:
+                            sys.stderr = devnull
+                            results = list(tqdm(executor.map(generate_single_qr_global, chunk_tasks), 
+                                               total=len(chunk_tasks), desc="Generating QR frames", file=sys.stdout))
+                    finally:
+                        sys.stderr = original_stderr
+                else:
+                    list(executor.map(generate_single_qr_global, chunk_tasks))
+            
+            return frames_dir
+        
+        # Replace the original method with our parallel version
+        encoder._generate_qr_frames = types.MethodType(_generate_qr_frames_parallel, encoder)
+        encoder.n_workers = n_workers
+        
+        return encoder
     
     def get_module_statistics(self) -> Dict[str, Any]:
         """Get detailed statistics from all modules."""
@@ -646,25 +791,25 @@ def test_modules(config: ProcessorConfig) -> bool:
             print(f"   ❌ EmbeddingService failed: {e}")
             all_tests_passed = False
     
-    # Test QRGenerator
-    print("⚡ Testing QRGenerator...")
+    # Test MemvidEncoder (replaces QRGenerator and VideoAssembler)
+    print("🎬 Testing MemvidEncoder...")
     try:
-        qr_generator = QRGenerator(n_workers=2, show_progress=False)
-        print("   ✅ QRGenerator initialized successfully")
+        import contextlib
+        import warnings
+        from io import StringIO
+        
+        with contextlib.redirect_stdout(StringIO()), \
+             contextlib.redirect_stderr(StringIO()), \
+             warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from memvid import MemvidEncoder
+        
+        encoder = MemvidEncoder()
+        print("   ✅ MemvidEncoder initialized successfully")
     except Exception as e:
-        print(f"   ❌ QRGenerator failed: {e}")
-        all_tests_passed = False
-    
-    # Test VideoAssembler
-    print("🎬 Testing VideoAssembler...")
-    try:
-        video_assembler = VideoAssembler(
-            fps=config.video_fps,
-            quality=config.video_quality
-        )
-        print("   ✅ VideoAssembler initialized successfully")
-    except Exception as e:
-        print(f"   ❌ VideoAssembler failed: {e}")
+        print(f"   ❌ MemvidEncoder failed: {e}")
+        if "numpy" in str(e).lower():
+            print(f"   💡 Try: pip install 'numpy<2' to fix MemVid compatibility")
         all_tests_passed = False
     
     print(f"\n🎯 Module Test Results: {'✅ ALL PASSED' if all_tests_passed else '❌ SOME FAILED'}")

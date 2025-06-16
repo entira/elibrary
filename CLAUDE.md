@@ -5,14 +5,17 @@ Technical implementation details and architectural decisions for the eLibrary PD
 ## Developer Quick Reference
 
 ```bash
-# Process with debug output
-python3 pdf_library_processor.py --max-workers 8 --force-reprocess
+# Test all modules before processing
+python3 pdf_processor.py --test-modules
+
+# Process with debug output and parallel workers
+python3 pdf_processor.py --max-workers 8 --force-reprocess
 
 # Inspect generated metadata
 python3 -c "import json; data=json.load(open('./library/1/data/library_index.json')); print(json.dumps(data['enhanced_stats'], indent=2))"
 
 # Monitor memory usage during processing
-top -p $(pgrep -f pdf_library_processor)
+top -p $(pgrep -f pdf_processor)
 ```
 
 ## System Architecture
@@ -30,12 +33,14 @@ The system processes PDFs through a sophisticated pipeline:
 
 ### Key Components
 
-#### PDFLibraryProcessor
-Main processing class with enhanced features:
+#### ModularPDFProcessor
+Main processing class with enhanced modular architecture:
 - Smart skip mechanism for already processed PDFs
 - Parallel QR generation using ProcessPoolExecutor
-- Comprehensive warning suppression
+- Comprehensive warning suppression with stdout/stderr redirection
 - Real-time progress tracking
+- Modular component architecture for better maintainability
+- Enhanced MemVid integration with monkey patching
 
 #### Citation System
 Advanced citation engine providing:
@@ -56,19 +61,22 @@ Optimized chunking strategy:
 ### Text Processing Pipeline
 
 ```python
-def process_pdf_enhanced(self, pdf_path: Path) -> bool:
-    # Extract text with page mapping
-    page_texts, num_pages = self.extract_text_with_pages(pdf_path)
+def process_pdf_modular(self, pdf_path: Path) -> bool:
+    # Extract text with page mapping using TextExtractor
+    page_texts, num_pages = self.text_extractor.extract_text_with_pages(pdf_path)
     
-    # Create enhanced chunks
-    enhanced_chunks = self.create_enhanced_chunks(page_texts)
+    # Create enhanced chunks using ChunkProcessor
+    enhanced_chunks = self.chunk_processor.create_enhanced_chunks(page_texts)
     
-    # Extract metadata using Ollama
-    metadata = self.extract_metadata_with_ollama(sample_text)
+    # Extract metadata using MetadataExtractor
+    metadata = self.metadata_extractor.extract_metadata_with_ollama(sample_text)
     
-    # Add chunks to memvid with enhanced metadata
-    for chunk in enhanced_chunks:
-        self.encoder.add_chunks([chunk.text])
+    # Build video with MemVid integration and parallel QR generation
+    with comprehensive_warning_suppression():
+        encoder = MemvidEncoder()
+        if self.config.max_workers > 1:
+            encoder = self._monkey_patch_parallel_qr_generation(encoder, self.config.max_workers)
+        result = encoder.build_video(str(video_path), str(index_path))
 ```
 
 ### Citation Engine
@@ -91,7 +99,7 @@ def _add_citations_to_context(self, context: str, search_results: List[Dict]) ->
 
 ### Warning Suppression System
 
-Multi-layered approach for clean output:
+Enhanced multi-layered approach for clean output:
 
 ```python
 # Environment variables set before imports
@@ -101,10 +109,19 @@ warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-# Import-time suppression
-with suppress_stdout(), suppress_stderr(), warnings.catch_warnings():
+# Enhanced suppression with stdout/stderr redirection
+with warnings.catch_warnings(), \
+     contextlib.redirect_stdout(StringIO()), \
+     contextlib.redirect_stderr(StringIO()):
     warnings.simplefilter("ignore")
     from memvid import MemvidEncoder
+    result = encoder.build_video(str(video_path), str(index_path))
+
+# Worker process suppression for parallel QR generation
+def generate_single_qr_global(args):
+    with contextlib.redirect_stderr(open(os.devnull, 'w')):
+        # QR generation logic with all warnings suppressed
+        return generate_qr_frame(args)
 ```
 
 ### Parallel Processing
@@ -145,14 +162,16 @@ def monkey_patch_parallel_qr_generation(encoder, n_workers: int):
 
 ```
 src/
-├── PDFLibraryProcessorV2        # Main processing class
-│   ├── extract_text_with_pages() # PyMuPDF integration
-│   ├── create_enhanced_chunks()  # Token-based chunking
-│   ├── extract_metadata_with_ollama() # AI metadata extraction
-│   └── process_pdf_enhanced()    # Main processing pipeline
-├── OllamaEmbedder              # Vector embedding generation
-├── EnhancedChunk               # Chunk data structure
-└── Citation utilities          # Page reference system
+├── ModularPDFProcessor         # Main processing class
+│   ├── TextExtractor          # PyMuPDF integration module
+│   ├── ChunkProcessor         # Token-based chunking module
+│   ├── MetadataExtractor      # AI metadata extraction module
+│   ├── EmbeddingService       # Vector embedding generation
+│   └── process_pdf_modular()  # Main processing pipeline
+├── ProcessorConfig            # Configuration management
+├── EnhancedChunk             # Chunk data structure
+├── MemVid Integration        # Video building and QR generation
+└── Citation utilities        # Page reference system
 ```
 
 ## Configuration Options
@@ -169,8 +188,11 @@ export TOKENIZERS_PARALLELISM=false   # Disable tokenizer warnings
 
 ### Test Implementation
 ```bash
+# Test modular processing system
+python3 pdf_processor.py --test-modules
+
 # Test processing quality
-python3 pdf_library_processor.py
+python3 pdf_processor.py --max-workers 8
 
 # Verify output files
 ls -la library/1/data/
@@ -218,11 +240,13 @@ import qrcode                 # QR generation for video frames
 
 ### Adding New Features
 
-1. Update processing pipeline in `pdf_library_processor.py`
-2. Enhance chat interface in `pdf_chat.py` if needed
-3. Update documentation and examples
-4. Test with sample PDF library
-5. Commit changes with descriptive messages
+1. Update modular processing pipeline in `pdf_processor.py`
+2. Enhance relevant module (TextExtractor, ChunkProcessor, MetadataExtractor, etc.)
+3. Update configuration in ProcessorConfig if needed
+4. Enhance chat interface in `pdf_chat.py` if needed
+5. Update documentation and examples
+6. Test with `--test-modules` flag and sample PDF library
+7. Commit changes with descriptive messages
 
 ### Code Quality
 
