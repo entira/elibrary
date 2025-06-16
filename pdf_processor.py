@@ -336,6 +336,10 @@ class ModularPDFProcessor:
                 video_path = library["video_file"]
                 index_path = library["index_file"]
                 
+                # Create temp directory in library data folder
+                temp_dir = data_dir / "temp"
+                temp_dir.mkdir(exist_ok=True)
+                
                 print(f"     🎬 Building video with {len(all_chunks)} chunks...")
                 
                 # Suppress all MemVid output like original
@@ -372,6 +376,11 @@ class ModularPDFProcessor:
                 self.stats["libraries_processed"] += 1
                 self.stats["total_files"] += len(pdf_files)
                 self.stats["total_chunks"] += len(all_chunks)
+                
+                # Cleanup temporary files
+                if temp_dir.exists():
+                    import shutil
+                    shutil.rmtree(temp_dir)
                 
                 return True
             else:
