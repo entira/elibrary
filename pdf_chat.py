@@ -60,11 +60,11 @@ QUESTION: {prompt}
 
 INSTRUCTIONS:
 - Provide a helpful answer based on the context
+- IMPORTANT: Use ONLY the exact citations that appear in the context above
+- Do NOT create new citations - copy the citation format exactly as shown  
 - Put citations at the END of sentences, not in the middle
-- Use the exact citation format provided in the context: [Book Title, page X]
-- Example: "Balance speed with quality. [Podcasting 100 Success Secrets, page 54]"
 - If the context doesn't contain relevant information, say so politely
-- Always cite your sources when making claims"""
+- Each citation is already in the correct format [Book Title, page X - Library Y]"""
 
             response = requests.post(
                 f"{self.base_url}/api/generate",
@@ -367,56 +367,63 @@ class PDFLibraryChat:
                 print(f"   🔗 Cross-page chunks: {detailed_stats['cross_page_chunks']}")
             print()
         
-        print("📑 Books in library:")
-        for i, (file_key, info) in enumerate(stats['books'].items(), 1):
-            # Display full title without truncation
-            title = info['title']
-            # Properly format authors and publishers from list format
-            if isinstance(info['authors'], list):
-                authors = ', '.join(info['authors'])
-            else:
-                # Handle string representation of list like "['Author1', 'Author2']"
-                authors_str = str(info['authors'])
-                if authors_str.startswith('[') and authors_str.endswith(']'):
-                    # Parse the string representation of list
-                    import ast
-                    try:
-                        authors_list = ast.literal_eval(authors_str)
-                        authors = ', '.join(authors_list)
-                    except:
-                        # Fallback: remove brackets and quotes manually but preserve content
-                        authors = authors_str.strip('[]').replace("'", "").replace('"', '')
-                else:
-                    authors = authors_str
-            
-            if isinstance(info['publishers'], list):
-                publishers = ', '.join(info['publishers'])
-            else:
-                # Handle string representation of list like "['Publisher1', 'Publisher2']"
-                publishers_str = str(info['publishers'])
-                if publishers_str.startswith('[') and publishers_str.endswith(']'):
-                    # Parse the string representation of list
-                    import ast
-                    try:
-                        publishers_list = ast.literal_eval(publishers_str)
-                        publishers = ', '.join(publishers_list)
-                    except:
-                        # Fallback: remove brackets and quotes manually but preserve content
-                        publishers = publishers_str.strip('[]').replace("'", "").replace('"', '')
-                else:
-                    publishers = publishers_str if publishers_str != 'Unknown' else 'Unknown'
-            doi = info.get('doi', 'Unknown')
-            
-            print(f"   {i:2d}. {title}")
-            print(f"       📖 Author(s): {authors}")
-            print(f"       🏢 Publisher(s): {publishers}")
-            print(f"       📅 Year: {info['year']}")
-            if doi != 'Unknown':
-                print(f"       🔗 DOI/ISBN: {doi}")
-            if info['pages'] != 'Unknown':
-                print(f"       📄 Pages: {info['pages']}")
-            print(f"       📝 Chunks: {info['chunks']}")
-            print()
+        # Show books from individual libraries
+        print("📑 Books in libraries:")
+        book_counter = 1
+        for lib_id, lib_info in stats['libraries'].items():
+            detailed_stats = self.load_library_stats(lib_info["index_file"])
+            if 'books' in detailed_stats:
+                print(f"\n📚 Library {lib_id} books:")
+                for file_key, info in detailed_stats['books'].items():
+                    # Display full title without truncation
+                    title = info['title']
+                    # Properly format authors and publishers from list format
+                    if isinstance(info['authors'], list):
+                        authors = ', '.join(info['authors'])
+                    else:
+                        # Handle string representation of list like "['Author1', 'Author2']"
+                        authors_str = str(info['authors'])
+                        if authors_str.startswith('[') and authors_str.endswith(']'):
+                            # Parse the string representation of list
+                            import ast
+                            try:
+                                authors_list = ast.literal_eval(authors_str)
+                                authors = ', '.join(authors_list)
+                            except:
+                                # Fallback: remove brackets and quotes manually but preserve content
+                                authors = authors_str.strip('[]').replace("'", "").replace('"', '')
+                        else:
+                            authors = authors_str
+                    
+                    if isinstance(info['publishers'], list):
+                        publishers = ', '.join(info['publishers'])
+                    else:
+                        # Handle string representation of list like "['Publisher1', 'Publisher2']"
+                        publishers_str = str(info['publishers'])
+                        if publishers_str.startswith('[') and publishers_str.endswith(']'):
+                            # Parse the string representation of list
+                            import ast
+                            try:
+                                publishers_list = ast.literal_eval(publishers_str)
+                                publishers = ', '.join(publishers_list)
+                            except:
+                                # Fallback: remove brackets and quotes manually but preserve content
+                                publishers = publishers_str.strip('[]').replace("'", "").replace('"', '')
+                        else:
+                            publishers = publishers_str if publishers_str != 'Unknown' else 'Unknown'
+                    doi = info.get('doi', 'Unknown')
+                    
+                    print(f"   {book_counter:2d}. {title}")
+                    print(f"       📖 Author(s): {authors}")
+                    print(f"       🏢 Publisher(s): {publishers}")
+                    print(f"       📅 Year: {info['year']}")
+                    if doi != 'Unknown':
+                        print(f"       🔗 DOI/ISBN: {doi}")
+                    if info['pages'] != 'Unknown':
+                        print(f"       📄 Pages: {info['pages']}")
+                    print(f"       📝 Chunks: {info['chunks']}")
+                    print()
+                    book_counter += 1
     
     def search_library(self, query: str, limit: int = 5) -> str:
         """Search across all libraries and return formatted results with citations."""
@@ -522,11 +529,11 @@ QUESTION: {query}
 
 INSTRUCTIONS:
 - Provide a helpful answer based on the context
+- IMPORTANT: Use ONLY the exact citations that appear in the context above
+- Do NOT create new citations - copy the citation format exactly as shown
 - Put citations at the END of sentences, not in the middle
-- Use the exact citation format provided in the context: [Book Title, page X]
-- Example: "Balance speed with quality. [Podcasting 100 Success Secrets, page 54]"
 - If the context doesn't contain relevant information, say so politely
-- Always cite your sources when making claims"""
+- Each citation is already in the correct format [Book Title, page X - Library Y]"""
                 
                 footer = f"\n\n⏱️ Response time: {response_time:.2f}s"
                 footer += f"\n\n🔍 DEBUG - Full prompt used:\n" + "="*60 + f"\n{debug_prompt}\n" + "="*60
