@@ -336,24 +336,25 @@ class ModularPDFProcessor:
                 video_path = library["video_file"]
                 index_path = library["index_file"]
                 
-                # Create temp directory in library data folder
-                temp_dir = data_dir / "temp"
-                temp_dir.mkdir(exist_ok=True)
+                # Note: MemVid handles temp files internally in /tmp/
                 
                 print(f"     🎬 Building video with {len(all_chunks)} chunks...")
                 
-                # Selective suppression - keep progress bars visible like original
+                # Full suppression like original processor does
                 import sys
                 import os
+                original_stdout = sys.stdout
                 original_stderr = sys.stderr
                 
                 try:
-                    # Suppress stderr warnings but keep stdout progress bars
+                    # Suppress both stdout and stderr for clean output like original
                     with open(os.devnull, 'w') as devnull, warnings.catch_warnings():
+                        sys.stdout = devnull
                         sys.stderr = devnull
                         warnings.simplefilter("ignore")
                         result = encoder.build_video(str(video_path), str(index_path))
                 finally:
+                    sys.stdout = original_stdout
                     sys.stderr = original_stderr
                 
                 # Enhance index with metadata (original pattern)
@@ -376,10 +377,7 @@ class ModularPDFProcessor:
                 self.stats["total_files"] += len(pdf_files)
                 self.stats["total_chunks"] += len(all_chunks)
                 
-                # Cleanup temporary files
-                if temp_dir.exists():
-                    import shutil
-                    shutil.rmtree(temp_dir)
+                # Note: MemVid cleans up its own temp files in /tmp/
                 
                 return True
             else:
