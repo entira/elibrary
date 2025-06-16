@@ -59,3 +59,6 @@ pdf_books/*.pdf
 *.tmp
 *.temp
 pdf_books
+
+# Article and research data
+article/
