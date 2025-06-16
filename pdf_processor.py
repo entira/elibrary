@@ -342,20 +342,19 @@ class ModularPDFProcessor:
                 
                 print(f"     🎬 Building video with {len(all_chunks)} chunks...")
                 
-                # Suppress all MemVid output like original
+                # Selective suppression - keep progress bars visible like original
                 import sys
-                old_stdout = sys.stdout
-                old_stderr = sys.stderr
+                import os
+                original_stderr = sys.stderr
                 
-                with contextlib.redirect_stdout(StringIO()), \
-                     contextlib.redirect_stderr(StringIO()), \
-                     warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    result = encoder.build_video(str(video_path), str(index_path))
-                
-                # Restore output
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
+                try:
+                    # Suppress stderr warnings but keep stdout progress bars
+                    with open(os.devnull, 'w') as devnull, warnings.catch_warnings():
+                        sys.stderr = devnull
+                        warnings.simplefilter("ignore")
+                        result = encoder.build_video(str(video_path), str(index_path))
+                finally:
+                    sys.stderr = original_stderr
                 
                 # Enhance index with metadata (original pattern)
                 self._enhance_index_with_metadata(encoder, index_path, page_offsets)
