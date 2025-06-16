@@ -411,13 +411,13 @@ class PDFLibraryProcessorV2:
             # Store page offset for this file
             page_offsets[str(pdf_path)] = page_offset
             
-            # Get sample text for metadata extraction (first 10 chunks)
-            sample_chunks = enhanced_chunks[:10]
-            sample_text = "\n".join([chunk.text for chunk in sample_chunks])
+            # Extract first page text for metadata extraction (improved approach)
+            print(f"     📄 Extracting first page for metadata...")
+            first_page_text = self.extract_first_page_text(pdf_path)
             
-            # Extract metadata using Ollama
-            print(f"     🤖 Extracting metadata...")
-            metadata = self.extract_metadata_with_ollama(sample_text, pdf_path.name)
+            # Extract metadata using improved Ollama method
+            print(f"     🤖 Extracting metadata with optimized prompt...")
+            metadata = self.extract_metadata_with_ollama(first_page_text, pdf_path.name)
             
             print(f"     📚 Title: {metadata['title'][:60]}{'...' if len(metadata['title']) > 60 else ''}")
             print(f"     👤 Authors: {metadata['authors'][:50]}{'...' if len(metadata['authors']) > 50 else ''}")
@@ -608,44 +608,150 @@ class PDFLibraryProcessorV2:
         
         return validated
 
+    def extract_first_page_text(self, pdf_path: Path) -> str:
+        """Extract text from the first page of PDF for metadata extraction."""
+        try:
+            doc = fitz.open(pdf_path)
+            if len(doc) == 0:
+                return ""
+            
+            # Try first few pages to find one with extractable text
+            for page_num in range(min(3, len(doc))):
+                page = doc[page_num]
+                page_text = page.get_text()
+                
+                if page_text and page_text.strip():
+                    doc.close()
+                    # Use simple cleaning to avoid aggressive removal
+                    cleaned_text = page_text.strip().replace('\x00', '')
+                    return cleaned_text
+            
+            doc.close()
+            return ""
+            
+        except Exception as e:
+            print(f"Error extracting text from {pdf_path}: {e}")
+            return ""
+    
+    def normalize_metadata_field(self, field_name: str, value: str) -> str:
+        """Normalize specific metadata fields post-extraction."""
+        if not value or not isinstance(value, str):
+            return ""
+        
+        value = value.strip()
+        
+        if field_name == "year":
+            # Extract 4-digit year
+            year_match = re.search(r'\b(19|20)\d{2}\b', value)
+            return year_match.group() if year_match else ""
+        
+        elif field_name == "doi":
+            # Clean DOI - remove prefixes and normalize
+            cleaned = value.lower().replace("doi:", "").replace("isbn:", "").strip()
+            # Remove common placeholder patterns
+            if cleaned in ["unknown", "not provided", "n/a", "doi number", "none"]:
+                return ""
+            return cleaned if len(cleaned) > 3 else ""
+        
+        elif field_name in ["title", "authors", "publishers"]:
+            # Remove common placeholder patterns
+            if value.lower() in ["unknown", "not provided", "n/a", "publisher name", "author name", "title"]:
+                return ""
+            return value
+        
+        return value
+    
+    def parse_json_response(self, response_text: str) -> Dict[str, str]:
+        """Robust JSON parsing with precise bracket matching."""
+        try:
+            # Find first and last braces for precise extraction
+            first_brace = response_text.find('{')
+            last_brace = response_text.rfind('}')
+            
+            if first_brace == -1 or last_brace == -1 or first_brace >= last_brace:
+                return {}
+            
+            json_str = response_text[first_brace:last_brace + 1]
+            return json.loads(json_str)
+            
+        except (json.JSONDecodeError, ValueError):
+            # Fallback: try to find JSON using regex (less reliable)
+            try:
+                json_match = re.search(r'\{[^}]*\}', response_text, re.DOTALL)
+                if json_match:
+                    return json.loads(json_match.group())
+            except (json.JSONDecodeError, ValueError):
+                pass
+        
+        return {}
+    
+    def build_extraction_prompt(self, document_text: str, attempt: int = 1) -> str:
+        """Build optimized prompt for gemma3:4b-it-qat model."""
+        if attempt == 1:
+            # First attempt: Clean, focused prompt
+            return f"""Extract the following metadata from the academic text below. Respond with valid JSON only.
+
+TEXT:
+{document_text}
+
+OUTPUT JSON with this exact structure:
+{{
+  "title": "...",
+  "authors": "...",
+  "publishers": "...",
+  "year": "...",
+  "doi": "..."
+}}
+
+INSTRUCTIONS:
+- title: The main title of the document
+- authors: Full author names, comma-separated
+- publishers: Full publisher name
+- year: 4-digit year only (e.g. "2023")
+- doi: DOI, ISBN, or similar (e.g. "10.1145/1234567")
+
+If any field is truly unknown, return an empty string.
+Do NOT include explanations or examples. Return the JSON object only."""
+        
+        else:
+            # Retry attempts: Add few-shot example for better guidance
+            return f"""You are a strict JSON parser for academic metadata extraction. Return valid JSON and nothing else.
+
+Extract metadata from this text:
+
+TEXT:
+{document_text}
+
+Example output format:
+{{"title": "Deep Learning Methods", "authors": "Alice Johnson, Bob Smith", "publishers": "Academic Press", "year": "2023", "doi": "10.1016/example"}}
+
+Your JSON output:"""
+    
     def extract_metadata_with_ollama(self, sample_text: str, filename: str = "", max_retries: int = 2) -> Dict[str, str]:
-        """Enhanced metadata extraction with retries, validation and filename fallback."""
+        """Enhanced metadata extraction optimized for gemma3:4b-it-qat model."""
         
         for attempt in range(max_retries + 1):
             try:
-                # Improved prompt with specific instructions
-                prompt = f"""Extract metadata from this academic/technical document text and return ONLY valid JSON.
-
-TEXT:
-{sample_text[:2000]}
-
-Return JSON with these exact keys: title, authors, publishers, year, doi
-
-INSTRUCTIONS:
-- title: The main title of the document (not chapter/section titles)
-- authors: Full author names separated by commas (not "Unknown" or placeholders)
-- publishers: Publishing company name (not "Publisher Name" or placeholders)  
-- year: 4-digit publication year ONLY (like 2024, not ranges)
-- doi: DOI, ISBN, or similar identifier (not "DOI Number" or placeholders)
-- If any field is truly unknown, use empty string ""
-- Do not use placeholder text like "Unknown", "Not provided", "Publisher Name"
-- Return ONLY the JSON object, no other text
-
-Example: {{"title": "Machine Learning Fundamentals", "authors": "John Smith, Jane Doe", "publishers": "MIT Press", "year": "2024", "doi": "978-0262046824"}}"""
+                # Build adaptive prompt based on attempt
+                prompt = self.build_extraction_prompt(sample_text, attempt + 1)
+                
+                # Improved inference configuration for gemma3:4b-it-qat
+                ollama_request = {
+                    "model": "gemma3:4b-it-qat",
+                    "prompt": prompt,
+                    "options": {
+                        "temperature": 0,        # Deterministic output
+                        "top_p": 0.9,           # Nucleus sampling
+                        "max_tokens": 512       # Increased token limit
+                        # Removed stop token to prevent truncation
+                    },
+                    "stream": False
+                }
 
                 response = requests.post(
                     "http://localhost:11434/api/generate",
-                    json={
-                        "model": "gemma3:4b-it-qat",
-                        "prompt": prompt,
-                        "options": {
-                            "temperature": 0.1,
-                            "max_tokens": 256,
-                            "stop": ["\n\n"]
-                        },
-                        "stream": False
-                    },
-                    timeout=30
+                    json=ollama_request,
+                    timeout=45  # Increased timeout for larger models
                 )
                 response.raise_for_status()
                 
@@ -653,22 +759,29 @@ Example: {{"title": "Machine Learning Fundamentals", "authors": "John Smith, Jan
                 result = response.json()
                 response_text = result.get("response", "").strip()
                 
-                # Try to extract JSON from response
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    metadata = json.loads(json_match.group())
+                # Use robust JSON parsing
+                metadata = self.parse_json_response(response_text)
+                
+                if metadata:
                     
                     # Validate required keys exist
                     required_keys = ["title", "authors", "publishers", "year", "doi"]
                     if all(key in metadata for key in required_keys):
-                        ollama_metadata = self.validate_metadata(metadata)
+                        # Normalize each field
+                        normalized_metadata = {}
+                        for key in required_keys:
+                            raw_value = str(metadata.get(key, ""))
+                            normalized_metadata[key] = self.normalize_metadata_field(key, raw_value)
+                        
+                        # Validate after normalization
+                        validated_metadata = self.validate_metadata(normalized_metadata)
                         
                         # Combine with filename fallback if provided
                         if filename:
                             filename_metadata = self.extract_metadata_from_filename(filename)
                             final_metadata = {}
                             for key in required_keys:
-                                ollama_value = ollama_metadata.get(key, "").strip()
+                                ollama_value = validated_metadata.get(key, "").strip()
                                 filename_value = filename_metadata.get(key, "").strip()
                                 
                                 # Use Ollama value if meaningful, otherwise filename value
@@ -684,14 +797,15 @@ Example: {{"title": "Machine Learning Fundamentals", "authors": "John Smith, Jan
                             return final_metadata
                         else:
                             print(f"     ✅ Ollama extraction successful (attempt {attempt + 1})")
-                            return ollama_metadata
+                            return validated_metadata
                     else:
-                        print(f"     ❌ Missing required keys in attempt {attempt + 1}")
+                        print(f"     ❌ Missing required keys in attempt {attempt + 1}: {list(metadata.keys())}")
                         if attempt == max_retries:
                             break
                         continue
                 else:
-                    print(f"     ❌ No JSON found in response (attempt {attempt + 1})")
+                    print(f"     ❌ No valid JSON found in response (attempt {attempt + 1})")
+                    print(f"     🔍 Response preview: {response_text[:200]}...")
                     if attempt == max_retries:
                         break
                     continue
