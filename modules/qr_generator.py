@@ -215,9 +215,24 @@ class QRGenerator:
         if self.show_progress:
             iterator = tqdm(iterator, total=len(chunks), desc="QR Generation")
         
-        # Import memvid in main process for sequential processing
+        # Import memvid in main process for sequential processing with full suppression
         try:
-            from memvid import MemvidEncoder
+            import contextlib
+            from io import StringIO
+            import sys
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            
+            with contextlib.redirect_stdout(StringIO()), \
+                 contextlib.redirect_stderr(StringIO()), \
+                 warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from memvid import MemvidEncoder
+                
+            # Restore output after import
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+                
         except Exception as e:
             print(f"     ❌ Failed to import MemVid: {e}")
             if "numpy" in str(e).lower() or "array_api" in str(e).lower():

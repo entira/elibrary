@@ -400,8 +400,16 @@ class VideoAssembler:
         return self.stats.copy()
     
     def _suppress_output(self):
-        """Context manager to suppress stdout and stderr."""
-        return contextlib.redirect_stdout(StringIO())
+        """Context manager to suppress stdout, stderr and warnings."""
+        @contextlib.contextmanager
+        def suppress_all():
+            import warnings
+            with warnings.catch_warnings(), \
+                 contextlib.redirect_stdout(StringIO()), \
+                 contextlib.redirect_stderr(StringIO()):
+                warnings.simplefilter("ignore")
+                yield
+        return suppress_all()
 
 
 # Utility functions for standalone usage
