@@ -46,10 +46,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import pymupdf as fitz
 from tqdm import tqdm
 
-# Suppress ALL output during memvid import
-with suppress_stdout(), suppress_stderr(), warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    from memvid import MemvidEncoder
+# Import memvid only when needed to avoid dependency issues
 
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
@@ -333,12 +330,20 @@ class PDFLibraryProcessorV2:
         data_dir.mkdir(exist_ok=True)
         
         # Initialize encoder for this library
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        try:
+            # Import memvid only when actually needed
+            with suppress_stdout(), suppress_stderr(), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from memvid import MemvidEncoder
+                
             encoder = MemvidEncoder()
             
             # Apply monkey patch for parallel QR generation
             encoder = monkey_patch_parallel_qr_generation(encoder, self.encoder_workers)
+        except Exception as e:
+            print(f"     ❌ Failed to initialize MemvidEncoder: {e}")
+            print(f"     💡 Check your memvid installation and dependencies")
+            return False
         
         # Get already processed PDFs for this library
         index_path = data_dir / "library_index.json"
