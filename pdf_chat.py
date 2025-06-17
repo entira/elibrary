@@ -174,6 +174,10 @@ class PDFLibraryChat:
         print("🔄 Initializing multi-library search...")
         self.multi_retriever = MultiLibraryRetriever(available_libraries)
         self.available_libraries = available_libraries
+
+        # Cache metadata for quick citation lookups
+        self.chunk_citation_map = {}
+        self._cache_metadata()
         
         # Initialize Ollama LLM if requested
         self.llm = OllamaLLM() if use_ollama else None
@@ -230,6 +234,25 @@ class PDFLibraryChat:
         # Sort by library ID (numeric)
         libraries.sort(key=lambda x: int(x["library_id"]))
         return libraries
+
+    def _cache_metadata(self) -> None:
+        """Build a mapping of chunk text to citation information."""
+        for lib in self.available_libraries:
+            try:
+                with open(lib["index_file"], "r", encoding="utf-8") as f:
+                    index_data = json.load(f)
+                metadata_list = index_data.get("metadata", [])
+                for meta in metadata_list:
+                    text = meta.get("text", "").strip()
+                    enhanced = meta.get("enhanced_metadata", {})
+                    if not text or not enhanced:
+                        continue
+                    title = enhanced.get("title", "Unknown title")
+                    page_ref = enhanced.get("page_reference", "Unknown page")
+                    citation = f"[{title}, page {page_ref} - {lib['name']}]"
+                    self.chunk_citation_map[text] = citation
+            except Exception as e:
+                print(f"Warning: Could not cache metadata for Library {lib['library_id']}: {e}")
     
     def get_library_preview(self, index_path: str) -> Dict[str, Any]:
         """Get preview information about a library."""
@@ -454,50 +477,19 @@ class PDFLibraryChat:
             return f"❌ Search error: {e}"
     
     def _add_citations_to_context(self, context_chunks: List[str]) -> List[str]:
-        """Add source citations to context chunks by matching with multi-library metadata."""
+        """Add source citations to context chunks using cached metadata."""
         try:
-            # Load all index data from all libraries
-            all_metadata = []
-            for lib in self.available_libraries:
-                try:
-                    with open(lib["index_file"], 'r', encoding='utf-8') as f:
-                        index_data = json.load(f)
-                    metadata_list = index_data.get('metadata', [])
-                    # Add library context to each metadata entry
-                    for meta in metadata_list:
-                        meta['_library_id'] = lib["library_id"]
-                        meta['_library_name'] = lib["name"]
-                    all_metadata.extend(metadata_list)
-                except Exception as e:
-                    print(f"Warning: Could not load index for Library {lib['library_id']}: {e}")
-                    continue
-            
-            # Try to match context chunks with metadata
             context_with_citations = []
-            for i, chunk in enumerate(context_chunks):
-                # Find matching metadata by text content
-                citation = f"[Unknown source, page Unknown]"
-                
-                # Search for matching chunk in all metadata
-                for meta in all_metadata:
-                    if meta.get('text', '') == chunk.strip():
-                        # Found match, add citation info with library context
-                        chunk_metadata = meta.get('enhanced_metadata', {})
-                        if chunk_metadata:
-                            title = chunk_metadata.get('title', 'Unknown title')
-                            page_ref = chunk_metadata.get('page_reference', 'Unknown page')
-                            library_name = meta.get('_library_name', 'Unknown Library')
-                            citation = f"[{title}, page {page_ref} - {library_name}]"
-                        break
-                
-                # Put citation at the end for cleaner LLM processing
+            for chunk in context_chunks:
+                citation = self.chunk_citation_map.get(
+                    chunk.strip(), "[Unknown source, page Unknown]"
+                )
                 context_with_citations.append(f"{chunk} {citation}")
-            
+
             return context_with_citations
-            
-        except Exception as e:
-            # Fallback: return context without citations
-            return [f"{chunk} [Unknown source]" for i, chunk in enumerate(context_chunks)]
+
+        except Exception:
+            return [f"{chunk} [Unknown source, page Unknown]" for chunk in context_chunks]
     
     def chat_with_library(self, query: str) -> str:
         """Chat with all libraries using context and LLM."""
