@@ -519,10 +519,15 @@ class ModularPDFProcessor:
                     "context_window": 32000,
                     "base_url": self.config.ollama_base_url
                 }
-                # Update retrieval settings to match our config
-                index_data["config"]["retrieval"]["max_workers"] = self.config.max_workers
-                index_data["config"]["chunking"]["chunk_size"] = self.config.chunk_size
-                index_data["config"]["chunking"]["overlap"] = int(self.config.chunk_size * self.config.overlap_percentage)
+                # Update retrieval settings to match our config safely
+                retrieval_cfg = index_data["config"].setdefault("retrieval", {})
+                retrieval_cfg["max_workers"] = self.config.max_workers
+
+                chunking_cfg = index_data["config"].setdefault("chunking", {})
+                chunking_cfg["chunk_size"] = self.config.chunk_size
+                chunking_cfg["overlap"] = int(
+                    self.config.chunk_size * self.config.overlap_percentage
+                )
             
             # Write enhanced index
             with open(index_path, 'w', encoding='utf-8') as f:
