@@ -36,27 +36,25 @@ class TextExtractor:
             - page_offset: Detected page numbering offset
         """
         try:
-            # Open PDF with PyMuPDF
-            doc = fitz.open(pdf_path)
-            num_pages = len(doc)
-            page_texts = {}
-            
-            for page_num in range(num_pages):
-                try:
-                    page = doc[page_num]
-                    # Extract text from page
-                    page_text = page.get_text()
-                    # Clean the extracted text to fix Issue #2 problems
-                    cleaned_text = self.clean_extracted_text(page_text)
-                    # Use actual PDF page numbers (0-based index + 1 = real page number)
-                    actual_page_num = page_num + 1
-                    page_texts[actual_page_num] = cleaned_text
-                except Exception as e:
-                    actual_page_num = page_num + 1
-                    print(f"Error extracting text from page {actual_page_num}: {e}")
-                    page_texts[actual_page_num] = ""
-            
-            doc.close()
+            # Open PDF with PyMuPDF using context manager for automatic cleanup
+            with fitz.open(pdf_path) as doc:
+                num_pages = len(doc)
+                page_texts = {}
+
+                for page_num in range(num_pages):
+                    try:
+                        page = doc[page_num]
+                        # Extract text from page
+                        page_text = page.get_text()
+                        # Clean the extracted text to fix Issue #2 problems
+                        cleaned_text = self.clean_extracted_text(page_text)
+                        # Use actual PDF page numbers (0-based index + 1 = real page number)
+                        actual_page_num = page_num + 1
+                        page_texts[actual_page_num] = cleaned_text
+                    except Exception as e:
+                        actual_page_num = page_num + 1
+                        print(f"Error extracting text from page {actual_page_num}: {e}")
+                        page_texts[actual_page_num] = ""
             
             # Detect page numbering offset
             page_offset = self.detect_page_number_offset(page_texts)
@@ -78,23 +76,21 @@ class TextExtractor:
             Cleaned text from first available page
         """
         try:
-            doc = fitz.open(pdf_path)
-            if len(doc) == 0:
+            with fitz.open(pdf_path) as doc:
+                if len(doc) == 0:
+                    return ""
+
+                # Try first few pages to find one with extractable text
+                for page_num in range(min(3, len(doc))):
+                    page = doc[page_num]
+                    page_text = page.get_text()
+
+                    if page_text and page_text.strip():
+                        # Use simple cleaning to avoid aggressive removal
+                        cleaned_text = page_text.strip().replace('\\x00', '')
+                        return cleaned_text
+
                 return ""
-            
-            # Try first few pages to find one with extractable text
-            for page_num in range(min(3, len(doc))):
-                page = doc[page_num]
-                page_text = page.get_text()
-                
-                if page_text and page_text.strip():
-                    doc.close()
-                    # Use simple cleaning to avoid aggressive removal
-                    cleaned_text = page_text.strip().replace('\\x00', '')
-                    return cleaned_text
-            
-            doc.close()
-            return ""
             
         except Exception as e:
             print(f"Error extracting text from {pdf_path}: {e}")
