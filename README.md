@@ -73,6 +73,12 @@ python3 pdf_library_processor.py
 ```bash
 python3 pdf_chat.py
 ```
+You can override the Ollama model or server URL with environment variables or
+command-line options:
+```bash
+OLLAMA_MODEL=mistral:latest OLLAMA_BASE_URL=http://localhost:11434 \
+    python3 pdf_chat.py --model mistral:latest --base-url http://localhost:11434
+```
 
 ## Features
 
@@ -228,6 +234,7 @@ The system automatically detects and uses:
 - Local Ollama installation at `http://localhost:11434`
 - PDF files in `./library/1/pdf/` directory
 - Output directory at `./library/1/data/`
+- `OLLAMA_MODEL` and `OLLAMA_BASE_URL` environment variables if set
 
 ### Dependencies
 

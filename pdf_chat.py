@@ -42,10 +42,11 @@ except ImportError:
 
 class OllamaLLM:
     """Local Ollama LLM interface for chat responses."""
-    
-    def __init__(self, model: str = "gemma3:4b-it-qat", base_url: str = "http://localhost:11434"):
-        self.model = model
-        self.base_url = base_url
+
+    def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None):
+        """Initialize the LLM using CLI args or environment variables."""
+        self.model = model or os.getenv("OLLAMA_MODEL", "gemma3:4b-it-qat")
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     
     def generate_response(self, prompt: str, context: str = "") -> str:
         """Generate response using Ollama."""
@@ -159,7 +160,7 @@ class MultiLibraryRetriever:
 class PDFLibraryChat:
     """Enhanced chat interface with multi-library support."""
     
-    def __init__(self, use_ollama: bool = True):
+    def __init__(self, use_ollama: bool = True, model: Optional[str] = None, base_url: Optional[str] = None):
         self.use_ollama = use_ollama
         
         # Find all available libraries
@@ -176,7 +177,7 @@ class PDFLibraryChat:
         self.available_libraries = available_libraries
         
         # Initialize Ollama LLM if requested
-        self.llm = OllamaLLM() if use_ollama else None
+        self.llm = OllamaLLM(model=model, base_url=base_url) if use_ollama else None
         
         # Session stats
         self.session_stats = {
@@ -191,7 +192,7 @@ class PDFLibraryChat:
         print(f"📝 Total chunks: {stats['total_chunks']}")
         print(f"📄 Total files: {stats['total_files']}")
         if self.use_ollama:
-            print(f"🤖 Using Ollama LLM: {self.llm.model}")
+            print(f"🤖 Using Ollama LLM: {self.llm.model} @ {self.llm.base_url}")
         print()
     
     def find_all_libraries(self) -> List[Dict[str, Any]]:
@@ -642,17 +643,28 @@ INSTRUCTIONS:
                 print("Please try again or type 'help' for assistance.\n")
 
 
-def main():
+def main() -> None:
     """Main entry point."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Interactive PDF library chat")
+    parser.add_argument("--model", type=str,
+                        default=os.getenv("OLLAMA_MODEL", "gemma3:4b-it-qat"),
+                        help="Ollama model name (env OLLAMA_MODEL)")
+    parser.add_argument("--base-url", type=str,
+                        default=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                        help="Ollama server URL (env OLLAMA_BASE_URL)")
+    args = parser.parse_args()
+
     # Test Ollama connection
     try:
-        response = requests.get("http://localhost:11434/api/tags", timeout=5)
+        response = requests.get(f"{args.base_url}/api/tags", timeout=5)
         ollama_available = response.status_code == 200
-    except:
+    except Exception:
         ollama_available = False
     
     if not ollama_available:
-        print("⚠️  Warning: Ollama not available at localhost:11434")
+        print(f"⚠️  Warning: Ollama not available at {args.base_url}")
         print("   Chat will use basic context search without LLM responses.")
         print("   Start Ollama server for enhanced chat experience.")
         use_ollama = False
@@ -661,7 +673,7 @@ def main():
     
     # Initialize and run chat
     try:
-        chat_app = PDFLibraryChat(use_ollama=use_ollama)
+        chat_app = PDFLibraryChat(use_ollama=use_ollama, model=args.model, base_url=args.base_url)
         chat_app.run_chat()
         
     except ImportError as e:
