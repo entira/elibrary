@@ -71,7 +71,17 @@ python3 pdf_library_processor.py
 
 #### Chat Interface
 ```bash
+# Basic chat with default settings
 python3 pdf_chat.py
+
+# Customize Ollama model and server
+python3 pdf_chat.py --model mistral:latest --base-url http://localhost:11435
+
+# Use environment variables for configuration
+OLLAMA_MODEL=gemma3:4b-it-qat OLLAMA_BASE_URL=http://localhost:11434 python3 pdf_chat.py
+
+# See all chat options
+python3 pdf_chat.py --help
 ```
 
 ## Features
@@ -91,6 +101,9 @@ python3 pdf_chat.py
 - **Clean Output**: Enhanced multi-layered warning suppression with stdout/stderr redirection
 - **Module Testing**: Comprehensive test suite for all components with `--test-modules`
 - **Advanced Configuration**: JSON config support, CLI overrides, and detailed help system
+- **Customizable Chat Interface**: CLI arguments and environment variables for Ollama model/server configuration
+- **Enhanced Search Results**: Score-based ranking and improved multi-library result aggregation
+- **Metadata Caching**: Optimized citation lookup with refresh capabilities
 
 ### Architecture
 
@@ -199,13 +212,16 @@ python3 pdf_library_processor.py --max-workers 8
 
 ### Multi-Library Chat Interface
 
-The chat system provides:
+The enhanced chat system provides:
 - Interactive Q&A across all your PDF libraries
+- **Customizable Ollama Configuration**: CLI arguments and environment variables
 - Automatic citations with library context [Book Title, page X - Library Y]
-- Cross-library search with unified results
+- Cross-library search with unified results and score-based ranking
 - Context-aware responses using RAG
 - Semantic search across all processed documents with vector embeddings
 - Real-time search results with relevance-based ranking across libraries
+- **Metadata Caching**: Fast citation lookup with refresh capabilities
+- **Enhanced Commands**: `help`, `info`, `stats`, `clear`, `search`, `refresh`
 
 Example interaction:
 ```
@@ -226,8 +242,25 @@ Based on your library, here are key podcasting best practices:
 
 The system automatically detects and uses:
 - Local Ollama installation at `http://localhost:11434`
-- PDF files in `./library/1/pdf/` directory
+- PDF files in `./library/1/pdf/` directory  
 - Output directory at `./library/1/data/`
+
+### Chat Configuration
+
+The chat interface supports multiple configuration methods:
+
+**Environment Variables:**
+```bash
+export OLLAMA_MODEL=mistral:latest        # Default model for chat
+export OLLAMA_BASE_URL=http://localhost:11435  # Custom Ollama server
+```
+
+**CLI Arguments:**
+```bash
+python3 pdf_chat.py --model gemma3:4b-it-qat --base-url http://localhost:11434
+```
+
+**Priority Order:** CLI arguments → Environment variables → Defaults
 
 ### Dependencies
 

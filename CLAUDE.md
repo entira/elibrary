@@ -11,6 +11,9 @@ python3 pdf_processor.py --test-modules
 # Process with debug output and parallel workers
 python3 pdf_processor.py --max-workers 8 --force-reprocess
 
+# Test chat interface with custom configuration
+python3 pdf_chat.py --model mistral:latest --base-url http://localhost:11435
+
 # Inspect generated metadata
 python3 -c "import json; data=json.load(open('./library/1/data/library_index.json')); print(json.dumps(data['enhanced_stats'], indent=2))"
 
@@ -30,6 +33,7 @@ The system processes PDFs through a sophisticated pipeline:
 4. **Metadata Extraction**: AI-powered extraction of titles, authors, publishers
 5. **QR Generation**: Parallel processing of video frames
 6. **Index Building**: Creates searchable vector database
+7. **Enhanced Chat Interface**: Customizable Ollama configuration with CLI/environment support
 
 ### Key Components
 
@@ -48,6 +52,8 @@ Advanced citation engine providing:
 - PDF page references for consistent navigation
 - Enhanced metadata display in chat interface
 - Automatic source attribution in search and chat responses
+- **Metadata Caching**: Fast citation lookup with refresh capabilities
+- **Score-based Ranking**: Improved multi-library result aggregation
 
 #### Token-based Chunking
 Optimized chunking strategy:
@@ -179,10 +185,31 @@ src/
 ### Environment Variables
 
 ```bash
+# Core processing
 export PYTHONWARNINGS=ignore           # Suppress Python warnings
 export TF_CPP_MIN_LOG_LEVEL=3         # Suppress TensorFlow logs
 export TOKENIZERS_PARALLELISM=false   # Disable tokenizer warnings
+
+# Chat interface
+export OLLAMA_MODEL=gemma3:4b-it-qat   # Default chat model
+export OLLAMA_BASE_URL=http://localhost:11434  # Ollama server URL
 ```
+
+### Chat Interface Configuration
+
+The chat system supports multiple configuration methods:
+
+**CLI Arguments:**
+```bash
+python3 pdf_chat.py --model mistral:latest --base-url http://localhost:11435
+```
+
+**Environment Variables:**
+```bash
+OLLAMA_MODEL=gemma3:4b-it-qat OLLAMA_BASE_URL=http://localhost:11434 python3 pdf_chat.py
+```
+
+**Priority Order:** CLI arguments → Environment variables → Defaults
 
 ## Testing and Validation
 
@@ -197,8 +224,14 @@ python3 pdf_processor.py --max-workers 8
 # Verify output files
 ls -la library/1/data/
 
-# Test chat functionality
+# Test chat functionality with default settings
 python3 pdf_chat.py
+
+# Test chat with custom Ollama configuration
+python3 pdf_chat.py --model gemma3:4b-it-qat --base-url http://localhost:11434
+
+# Test with environment variables
+OLLAMA_MODEL=mistral:latest python3 pdf_chat.py
 ```
 
 ### Quality Metrics

@@ -4,6 +4,12 @@
 
 The PDF processing system has been modularized into six specialized components, each handling a specific aspect of the PDF-to-video pipeline. This architecture promotes maintainability, testability, and scalability.
 
+**Recent Enhancements:**
+- Enhanced chat interface with customizable Ollama configuration
+- Score-based result ranking across multi-library searches
+- Metadata caching for improved citation performance
+- CLI arguments and environment variable support
+
 ## Module Hierarchy
 
 ```mermaid
