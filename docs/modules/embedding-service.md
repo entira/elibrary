@@ -60,7 +60,8 @@ service = EmbeddingService(
     base_url="http://localhost:11434",
     default_dimension=768,
     timeout=60,
-    batch_size=20
+    batch_size=20,
+    show_progress=True
 )
 ```
 
@@ -68,7 +69,7 @@ service = EmbeddingService(
 
 ### EmbeddingService Class
 
-#### `__init__(model="nomic-embed-text", base_url="http://localhost:11434", default_dimension=768, timeout=30, batch_size=10)`
+#### `__init__(model="nomic-embed-text", base_url="http://localhost:11434", default_dimension=768, timeout=30, batch_size=10, show_progress=True)`
 
 Initialize EmbeddingService with configuration.
 
@@ -78,6 +79,7 @@ Initialize EmbeddingService with configuration.
 - `default_dimension`: Default embedding dimension for fallback
 - `timeout`: Request timeout in seconds
 - `batch_size`: Number of texts to process in parallel
+- `show_progress`: Whether to display progress bars during embedding
 
 #### `embed(texts: List[str]) -> List[List[float]]`
 
