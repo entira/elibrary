@@ -200,7 +200,8 @@ class ModularPDFProcessor:
             if self.config.generate_embeddings:
                 self.embedding_service = EmbeddingService(
                     model=self.config.embedding_model,
-                    base_url=self.config.ollama_base_url
+                    base_url=self.config.ollama_base_url,
+                    show_progress=self.config.show_progress
                 )
             else:
                 self.embedding_service = None
@@ -780,7 +781,8 @@ def test_modules(config: ProcessorConfig) -> bool:
         try:
             embedding_service = EmbeddingService(
                 model=config.embedding_model,
-                base_url=config.ollama_base_url
+                base_url=config.ollama_base_url,
+                show_progress=config.show_progress
             )
             health = embedding_service.health_check()
             if health["service_available"]:
