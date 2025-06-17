@@ -27,17 +27,9 @@ import time
 import json
 import requests
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 
 # Import memvid only when needed to avoid dependency issues
-
-# Cross-platform keyboard input
-try:
-    import termios
-    import tty
-    HAS_TERMIOS = True
-except ImportError:
-    HAS_TERMIOS = False
 
 
 class OllamaLLM:
