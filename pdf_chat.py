@@ -28,6 +28,7 @@ import json
 import requests
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+import ast
 
 # Import memvid only when needed to avoid dependency issues
 
@@ -386,7 +387,6 @@ class PDFLibraryChat:
                         authors_str = str(info['authors'])
                         if authors_str.startswith('[') and authors_str.endswith(']'):
                             # Parse the string representation of list
-                            import ast
                             try:
                                 authors_list = ast.literal_eval(authors_str)
                                 authors = ', '.join(authors_list)
@@ -403,7 +403,6 @@ class PDFLibraryChat:
                         publishers_str = str(info['publishers'])
                         if publishers_str.startswith('[') and publishers_str.endswith(']'):
                             # Parse the string representation of list
-                            import ast
                             try:
                                 publishers_list = ast.literal_eval(publishers_str)
                                 publishers = ', '.join(publishers_list)
