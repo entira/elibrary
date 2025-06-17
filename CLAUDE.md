@@ -52,8 +52,9 @@ Advanced citation engine providing:
 - PDF page references for consistent navigation
 - Enhanced metadata display in chat interface
 - Automatic source attribution in search and chat responses
-- **Metadata Caching**: Fast citation lookup with refresh capabilities
+- **Optimized Metadata Caching**: O(1) citation lookup performance (massive improvement from O(n*m))
 - **Score-based Ranking**: Improved multi-library result aggregation
+- **Pre-built Citation Maps**: Dictionary-based lookups eliminate expensive nested loops
 
 #### Token-based Chunking
 Optimized chunking strategy:
@@ -68,14 +69,16 @@ Optimized chunking strategy:
 
 ```python
 def process_pdf_modular(self, pdf_path: Path) -> bool:
-    # Extract text with page mapping using TextExtractor
-    page_texts, num_pages = self.text_extractor.extract_text_with_pages(pdf_path)
+    # Extract text with page mapping using context manager for resource cleanup
+    with fitz.open(pdf_path) as doc:
+        page_texts, num_pages = self.text_extractor.extract_text_with_pages(doc)
     
     # Create enhanced chunks using ChunkProcessor
     enhanced_chunks = self.chunk_processor.create_enhanced_chunks(page_texts)
     
-    # Extract metadata using MetadataExtractor
-    metadata = self.metadata_extractor.extract_metadata_with_ollama(sample_text)
+    # Extract metadata using MetadataExtractor with session management
+    with OllamaLLM(model=self.config.metadata_model) as llm:
+        metadata = self.metadata_extractor.extract_metadata_with_ollama(sample_text, llm)
     
     # Build video with MemVid integration and parallel QR generation
     with comprehensive_warning_suppression():
@@ -154,13 +157,18 @@ def monkey_patch_parallel_qr_generation(encoder, n_workers: int):
 - **Parallel QR Generation**: Multi-worker processing for faster QR creation
 - **Progress Tracking**: Real-time feedback with detailed step information
 - **Memory Management**: Efficient handling of large document collections
+- **HTTP Session Management**: Persistent connections for API calls reduce overhead
+- **Citation Lookup Optimization**: O(1) dictionary-based lookups vs O(n*m) nested loops
+- **Resource Cleanup**: Context managers ensure automatic PDF handle cleanup
 
 ### Quality Improvements
 
-- **PyMuPDF Integration**: Superior text extraction compared to PyPDF2
+- **PyMuPDF Integration**: Superior text extraction with context manager resource management
 - **Text Cleaning**: Robust handling of encoding issues and artifacts
 - **Metadata Enhancement**: AI-powered extraction of structured information
 - **Citation Accuracy**: Smart page number detection and validation
+- **Configurable Progress Display**: Optional progress bars for different deployment scenarios
+- **Safe Config Defaults**: Robust handling of missing configuration sections
 
 ## Internal Architecture
 

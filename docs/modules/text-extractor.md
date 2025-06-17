@@ -20,17 +20,20 @@ pip install pymupdf
 
 ## Basic Usage
 
-### Extract All Pages
+### Extract All Pages with Resource Management
 
 ```python
 from modules.text_extractor import TextExtractor
 
 extractor = TextExtractor()
+# Automatic resource cleanup with context managers
 page_texts, num_pages, offset = extractor.extract_text_with_pages("document.pdf")
 
 print(f"Extracted {num_pages} pages with offset {offset}")
 for page_num, text in page_texts.items():
     print(f"Page {page_num}: {len(text)} characters")
+
+# Resources are automatically cleaned up - no manual doc.close() needed
 ```
 
 ### Extract First Page Only
@@ -39,8 +42,10 @@ for page_num, text in page_texts.items():
 from modules.text_extractor import TextExtractor
 
 extractor = TextExtractor()
+# Context manager ensures automatic PDF resource cleanup
 first_page_text = extractor.extract_first_page_text("document.pdf")
 print(f"First page: {len(first_page_text)} characters")
+# PDF handles automatically released
 ```
 
 ### Convenience Functions

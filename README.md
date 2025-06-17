@@ -103,7 +103,10 @@ python3 pdf_chat.py --help
 - **Advanced Configuration**: JSON config support, CLI overrides, and detailed help system
 - **Customizable Chat Interface**: CLI arguments and environment variables for Ollama model/server configuration
 - **Enhanced Search Results**: Score-based ranking and improved multi-library result aggregation
-- **Metadata Caching**: Optimized citation lookup with refresh capabilities
+- **Metadata Caching**: Optimized citation lookup with refresh capabilities (O(1) performance)
+- **HTTP Session Management**: Persistent connections for improved API performance
+- **Resource Management**: Context managers for automatic PDF cleanup and memory efficiency
+- **Progress Control**: Configurable progress displays for different deployment scenarios
 
 ### Architecture
 
@@ -220,7 +223,9 @@ The enhanced chat system provides:
 - Context-aware responses using RAG
 - Semantic search across all processed documents with vector embeddings
 - Real-time search results with relevance-based ranking across libraries
-- **Metadata Caching**: Fast citation lookup with refresh capabilities
+- **Optimized Citation Lookup**: O(1) performance with intelligent caching (massive speed improvement)
+- **Persistent HTTP Sessions**: Efficient connection reuse for multiple API calls
+- **Resource-Aware Processing**: Automatic cleanup and memory management
 - **Enhanced Commands**: `help`, `info`, `stats`, `clear`, `search`, `refresh`
 
 Example interaction:
@@ -276,14 +281,14 @@ For detailed technical documentation, see [CLAUDE.md](CLAUDE.md).
 
 ### Key Technologies
 
-- **PyMuPDF**: High-quality PDF text extraction with page mapping
-- **Ollama**: Local LLM ecosystem
+- **PyMuPDF**: High-quality PDF text extraction with context manager resource management
+- **Ollama**: Local LLM ecosystem with persistent HTTP session management
   - `gemma3:4b-it-qat`: Optimized for metadata extraction and chat responses
   - `nomic-embed-text`: High-quality vector embeddings (768 dimensions)
 - **MemVid**: Video-based indexing and QR code generation with monkey patching
 - **tiktoken**: GPT-4 compatible tokenization for precise chunking
 - **ProcessPoolExecutor**: Parallel QR generation with comprehensive warning suppression
-- **FAISS**: Vector similarity search
+- **FAISS**: Vector similarity search with O(1) citation lookup caching
 - **Token-based Processing**: Optimal 500-token chunks with 15% overlap for RAG
 
 ## Troubleshooting

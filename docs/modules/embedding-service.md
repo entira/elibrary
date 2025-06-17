@@ -79,7 +79,7 @@ Initialize EmbeddingService with configuration.
 - `default_dimension`: Default embedding dimension for fallback
 - `timeout`: Request timeout in seconds
 - `batch_size`: Number of texts to process in parallel
-- `show_progress`: Whether to display progress bars during embedding
+- `show_progress`: Whether to display progress bars during embedding (configurable for automated/headless environments)
 
 #### `embed(texts: List[str]) -> List[List[float]]`
 
