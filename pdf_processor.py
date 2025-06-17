@@ -70,7 +70,6 @@ def generate_single_qr_global(args):
         qr_config = config.get('qr', {}) if hasattr(config, 'get') else {}
         
         # Try with progressively shorter text if QR version exceeds 40
-        original_text = chunk_text
         for max_chars in [len(chunk_text), 2800, 2400, 2000, 1600, 1200]:
             try:
                 if max_chars < len(chunk_text):
@@ -564,8 +563,8 @@ class ModularPDFProcessor:
                         # Temporarily suppress stderr only for worker warnings, keep tqdm visible
                         with open(os.devnull, 'w') as devnull:
                             sys.stderr = devnull
-                            results = list(tqdm(executor.map(generate_single_qr_global, chunk_tasks), 
-                                               total=len(chunk_tasks), desc="Generating QR frames", file=sys.stdout))
+                            _ = list(tqdm(executor.map(generate_single_qr_global, chunk_tasks),
+                                          total=len(chunk_tasks), desc="Generating QR frames", file=sys.stdout))
                     finally:
                         sys.stderr = original_stderr
                 else:
