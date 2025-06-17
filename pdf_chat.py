@@ -121,27 +121,37 @@ class MultiLibraryRetriever:
             except Exception as e:
                 print(f"   ❌ Library {lib['library_id']}: Failed to load - {e}")
     
-    def search(self, query: str, top_k: int = 5) -> List[str]:
-        """Search across all libraries and return top results."""
-        all_results = []
-        
+    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """Search across all libraries and return top results with scores."""
+        all_results: List[Dict[str, Any]] = []
+
         # Search each library
         for lib_id, lib_data in self.retrievers.items():
             try:
                 results = lib_data["retriever"].search(query, top_k=top_k)
-                # Add library context to each result
+
                 for result in results:
+                    if isinstance(result, dict):
+                        text = result.get("text", "")
+                        score = result.get("score")
+                    elif isinstance(result, tuple) and len(result) == 2:
+                        text, score = result
+                    else:
+                        text = result
+                        score = None
+
                     all_results.append({
-                        "text": result,
+                        "text": text,
+                        "score": score,
                         "library_id": lib_id,
-                        "library_name": lib_data["info"]["name"]
+                        "library_name": lib_data["info"]["name"],
                     })
             except Exception as e:
                 print(f"Search error in Library {lib_id}: {e}")
-        
-        # Sort by relevance (assuming MemvidRetriever returns sorted results)
-        # For now, just return the text portions
-        return [result["text"] for result in all_results[:top_k]]
+
+        # Sort by score if available
+        all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+        return all_results[:top_k]
     
     def get_library_stats(self) -> Dict[str, Any]:
         """Get combined statistics from all libraries."""
@@ -453,7 +463,7 @@ class PDFLibraryChat:
         except Exception as e:
             return f"❌ Search error: {e}"
     
-    def _add_citations_to_context(self, context_chunks: List[str]) -> List[str]:
+    def _add_citations_to_context(self, context_chunks: List[Any]) -> List[str]:
         """Add source citations to context chunks by matching with multi-library metadata."""
         try:
             # Load all index data from all libraries
@@ -473,14 +483,15 @@ class PDFLibraryChat:
                     continue
             
             # Try to match context chunks with metadata
-            context_with_citations = []
-            for i, chunk in enumerate(context_chunks):
+            context_with_citations: List[str] = []
+            for chunk in context_chunks:
+                text = chunk["text"] if isinstance(chunk, dict) else chunk
                 # Find matching metadata by text content
                 citation = f"[Unknown source, page Unknown]"
-                
+
                 # Search for matching chunk in all metadata
                 for meta in all_metadata:
-                    if meta.get('text', '') == chunk.strip():
+                    if meta.get('text', '') == text.strip():
                         # Found match, add citation info with library context
                         chunk_metadata = meta.get('enhanced_metadata', {})
                         if chunk_metadata:
@@ -489,10 +500,10 @@ class PDFLibraryChat:
                             library_name = meta.get('_library_name', 'Unknown Library')
                             citation = f"[{title}, page {page_ref} - {library_name}]"
                         break
-                
+
                 # Put citation at the end for cleaner LLM processing
-                context_with_citations.append(f"{chunk} {citation}")
-            
+                context_with_citations.append(f"{text} {citation}")
+
             return context_with_citations
             
         except Exception as e:
