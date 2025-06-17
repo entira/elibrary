@@ -26,6 +26,8 @@ def suppress_stderr():
 import time
 import json
 import requests
+import ast
+import argparse
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -131,27 +133,39 @@ class MultiLibraryRetriever:
             except Exception as e:
                 print(f"   ❌ Library {lib['library_id']}: Failed to load - {e}")
     
-    def search(self, query: str, top_k: int = 5) -> List[str]:
-        """Search across all libraries and return top results."""
+    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """Search across all libraries and return top results with scores."""
         all_results = []
         
         # Search each library
         for lib_id, lib_data in self.retrievers.items():
             try:
                 results = lib_data["retriever"].search(query, top_k=top_k)
-                # Add library context to each result
-                for result in results:
-                    all_results.append({
-                        "text": result,
-                        "library_id": lib_id,
-                        "library_name": lib_data["info"]["name"]
-                    })
+                # Handle both string results and dict results with scores
+                for i, result in enumerate(results):
+                    if isinstance(result, dict):
+                        # Result already has score information
+                        result_dict = {
+                            "text": result.get("text", result.get("content", str(result))),
+                            "score": result.get("score", 1.0 - (i * 0.1)),  # Fallback scoring
+                            "library_id": lib_id,
+                            "library_name": lib_data["info"]["name"]
+                        }
+                    else:
+                        # String result, assign score based on position
+                        result_dict = {
+                            "text": result,
+                            "score": 1.0 - (i * 0.1),  # Higher score for earlier results
+                            "library_id": lib_id,
+                            "library_name": lib_data["info"]["name"]
+                        }
+                    all_results.append(result_dict)
             except Exception as e:
                 print(f"Search error in Library {lib_id}: {e}")
         
-        # Sort by relevance (assuming MemvidRetriever returns sorted results)
-        # For now, just return the text portions
-        return [result["text"] for result in all_results[:top_k]]
+        # Sort by score (highest first) and limit to top_k
+        all_results.sort(key=lambda x: x["score"], reverse=True)
+        return all_results[:top_k]
     
     def get_library_stats(self) -> Dict[str, Any]:
         """Get combined statistics from all libraries."""
@@ -169,8 +183,10 @@ class MultiLibraryRetriever:
 class PDFLibraryChat:
     """Enhanced chat interface with multi-library support."""
     
-    def __init__(self, use_ollama: bool = True):
+    def __init__(self, use_ollama: bool = True, model: str = "gemma3:4b-it-qat", base_url: str = "http://localhost:11434"):
         self.use_ollama = use_ollama
+        self.model = model
+        self.base_url = base_url
         
         # Find all available libraries
         available_libraries = self.find_all_libraries()
@@ -190,7 +206,7 @@ class PDFLibraryChat:
         self._cache_metadata()
         
         # Initialize Ollama LLM if requested
-        self.llm = OllamaLLM() if use_ollama else None
+        self.llm = OllamaLLM(model=self.model, base_url=self.base_url) if use_ollama else None
         
         # Session stats
         self.session_stats = {
@@ -263,6 +279,13 @@ class PDFLibraryChat:
                     self.chunk_citation_map[text] = citation
             except Exception as e:
                 print(f"Warning: Could not cache metadata for Library {lib['library_id']}: {e}")
+    
+    def refresh_metadata_cache(self) -> None:
+        """Refresh the metadata cache for all libraries."""
+        print("🔄 Refreshing metadata cache...")
+        self.chunk_citation_map.clear()
+        self._cache_metadata()
+        print(f"✅ Cached metadata for {len(self.chunk_citation_map)} chunks")
     
     def get_library_preview(self, index_path: str) -> Dict[str, Any]:
         """Get preview information about a library."""
@@ -419,7 +442,6 @@ class PDFLibraryChat:
                         authors_str = str(info['authors'])
                         if authors_str.startswith('[') and authors_str.endswith(']'):
                             # Parse the string representation of list
-                            import ast
                             try:
                                 authors_list = ast.literal_eval(authors_str)
                                 authors = ', '.join(authors_list)
@@ -436,7 +458,6 @@ class PDFLibraryChat:
                         publishers_str = str(info['publishers'])
                         if publishers_str.startswith('[') and publishers_str.endswith(']'):
                             # Parse the string representation of list
-                            import ast
                             try:
                                 publishers_list = ast.literal_eval(publishers_str)
                                 publishers = ', '.join(publishers_list)
@@ -463,22 +484,27 @@ class PDFLibraryChat:
         """Search across all libraries and return formatted results with citations."""
         try:
             start_time = time.time()
-            context_chunks = self.multi_retriever.search(query, top_k=limit)
+            search_results = self.multi_retriever.search(query, top_k=limit)
             search_time = time.time() - start_time
             
-            if not context_chunks:
+            if not search_results:
                 return f"🔍 No relevant results found for: '{query}'"
+            
+            # Extract text chunks for citation processing
+            context_chunks = [result["text"] for result in search_results]
             
             # Add citations to context chunks
             context_with_citations = self._add_citations_to_context(context_chunks)
             
-            # Format results
+            # Format results with scores
             result = f"🔍 Search results for: '{query}' ({search_time:.2f}s)\n\n"
             result += "📄 Relevant passages:\n"
             result += "─" * 60 + "\n"
             
-            for i, chunk_with_citation in enumerate(context_with_citations, 1):
-                result += f"\n[Result {i}]:\n{chunk_with_citation}\n"
+            for i, (search_result, chunk_with_citation) in enumerate(zip(search_results, context_with_citations), 1):
+                score = search_result.get("score", 0.0)
+                library_name = search_result.get("library_name", "Unknown Library")
+                result += f"\n[Result {i}] (Score: {score:.3f}, {library_name}):\n{chunk_with_citation}\n"
             
             result += "─" * 60
             return result
@@ -507,10 +533,13 @@ class PDFLibraryChat:
             start_time = time.time()
             
             # Get context from multi-library search
-            context_chunks = self.multi_retriever.search(query, top_k=5)
+            search_results = self.multi_retriever.search(query, top_k=5)
             
-            if not context_chunks:
+            if not search_results:
                 return "🔍 I couldn't find relevant information in the library for your question."
+            
+            # Extract text chunks for citation processing
+            context_chunks = [result["text"] for result in search_results]
             
             # Load index to get metadata for citations
             context_with_citations = self._add_citations_to_context(context_chunks)
@@ -572,6 +601,7 @@ INSTRUCTIONS:
         print("   search <query>- Search across all libraries")
         print("   stats         - Show session statistics")
         print("   clear         - Clear screen")
+        print("   refresh       - Refresh metadata cache")
         print("   exit/quit     - Exit chat")
         print()
         print("💡 Tips:")
@@ -581,6 +611,11 @@ INSTRUCTIONS:
         print("   - The system searches across ALL library instances")
         print("   - Citations include library source and PDF page numbers")
         print("   - Results are ranked by relevance across all libraries")
+        print()
+        print("🔧 CLI Options:")
+        print("   --model <name>     - Set Ollama model (default: gemma3:4b-it-qat)")
+        print("   --base-url <url>   - Set Ollama base URL (default: http://localhost:11434)")
+        print("   Environment variables: OLLAMA_MODEL, OLLAMA_BASE_URL")
     
     def run_chat(self):
         """Run the interactive chat loop."""
@@ -621,6 +656,10 @@ INSTRUCTIONS:
                     os.system('clear' if os.name == 'posix' else 'cls')
                     continue
                 
+                elif user_input.lower() == 'refresh':
+                    self.refresh_metadata_cache()
+                    continue
+                
                 elif user_input.lower().startswith('search '):
                     query = user_input[7:].strip()
                     if query:
@@ -646,24 +685,47 @@ INSTRUCTIONS:
 
 def main():
     """Main entry point."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Interactive chat with PDF library video memory using local Ollama.",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument(
+        "--model", 
+        type=str, 
+        default=os.getenv("OLLAMA_MODEL", "gemma3:4b-it-qat"),
+        help="Ollama model to use (default: gemma3:4b-it-qat, can be set via OLLAMA_MODEL env var)"
+    )
+    
+    parser.add_argument(
+        "--base-url", 
+        type=str, 
+        default=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        help="Ollama base URL (default: http://localhost:11434, can be set via OLLAMA_BASE_URL env var)"
+    )
+    
+    args = parser.parse_args()
+    
     # Test Ollama connection
     try:
-        response = requests.get("http://localhost:11434/api/tags", timeout=5)
+        response = requests.get(f"{args.base_url}/api/tags", timeout=5)
         ollama_available = response.status_code == 200
     except:
         ollama_available = False
     
     if not ollama_available:
-        print("⚠️  Warning: Ollama not available at localhost:11434")
+        print(f"⚠️  Warning: Ollama not available at {args.base_url}")
         print("   Chat will use basic context search without LLM responses.")
         print("   Start Ollama server for enhanced chat experience.")
         use_ollama = False
     else:
         use_ollama = True
+        print(f"🤖 Using Ollama model: {args.model} at {args.base_url}")
     
     # Initialize and run chat
     try:
-        chat_app = PDFLibraryChat(use_ollama=use_ollama)
+        chat_app = PDFLibraryChat(use_ollama=use_ollama, model=args.model, base_url=args.base_url)
         chat_app.run_chat()
         
     except ImportError as e:
