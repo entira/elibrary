@@ -70,7 +70,6 @@ def generate_single_qr_global(args):
         qr_config = config.get('qr', {}) if hasattr(config, 'get') else {}
         
         # Try with progressively shorter text if QR version exceeds 40
-        original_text = chunk_text
         for max_chars in [len(chunk_text), 2800, 2400, 2000, 1600, 1200]:
             try:
                 if max_chars < len(chunk_text):
@@ -200,7 +199,8 @@ class ModularPDFProcessor:
             if self.config.generate_embeddings:
                 self.embedding_service = EmbeddingService(
                     model=self.config.embedding_model,
-                    base_url=self.config.ollama_base_url
+                    base_url=self.config.ollama_base_url,
+                    show_progress=self.config.show_progress
                 )
             else:
                 self.embedding_service = None
@@ -519,10 +519,15 @@ class ModularPDFProcessor:
                     "context_window": 32000,
                     "base_url": self.config.ollama_base_url
                 }
-                # Update retrieval settings to match our config
-                index_data["config"]["retrieval"]["max_workers"] = self.config.max_workers
-                index_data["config"]["chunking"]["chunk_size"] = self.config.chunk_size
-                index_data["config"]["chunking"]["overlap"] = int(self.config.chunk_size * self.config.overlap_percentage)
+                # Update retrieval settings to match our config safely
+                retrieval_cfg = index_data["config"].setdefault("retrieval", {})
+                retrieval_cfg["max_workers"] = self.config.max_workers
+
+                chunking_cfg = index_data["config"].setdefault("chunking", {})
+                chunking_cfg["chunk_size"] = self.config.chunk_size
+                chunking_cfg["overlap"] = int(
+                    self.config.chunk_size * self.config.overlap_percentage
+                )
             
             # Write enhanced index
             with open(index_path, 'w', encoding='utf-8') as f:
@@ -564,8 +569,8 @@ class ModularPDFProcessor:
                         # Temporarily suppress stderr only for worker warnings, keep tqdm visible
                         with open(os.devnull, 'w') as devnull:
                             sys.stderr = devnull
-                            results = list(tqdm(executor.map(generate_single_qr_global, chunk_tasks), 
-                                               total=len(chunk_tasks), desc="Generating QR frames", file=sys.stdout))
+                            _ = list(tqdm(executor.map(generate_single_qr_global, chunk_tasks),
+                                          total=len(chunk_tasks), desc="Generating QR frames", file=sys.stdout))
                     finally:
                         sys.stderr = original_stderr
                 else:
@@ -780,7 +785,8 @@ def test_modules(config: ProcessorConfig) -> bool:
         try:
             embedding_service = EmbeddingService(
                 model=config.embedding_model,
-                base_url=config.ollama_base_url
+                base_url=config.ollama_base_url,
+                show_progress=config.show_progress
             )
             health = embedding_service.health_check()
             if health["service_available"]:

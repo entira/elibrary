@@ -19,12 +19,13 @@ warnings.filterwarnings("ignore")
 class EmbeddingService:
     """Embedding service using Ollama's nomic-embed-text model."""
     
-    def __init__(self, 
+    def __init__(self,
                  model: str = "nomic-embed-text",
                  base_url: str = "http://localhost:11434",
                  default_dimension: int = 768,
                  timeout: int = 30,
-                 batch_size: int = 10):
+                 batch_size: int = 10,
+                 show_progress: bool = True):
         """Initialize EmbeddingService.
         
         Args:
@@ -39,6 +40,7 @@ class EmbeddingService:
         self.default_dimension = default_dimension
         self.timeout = timeout
         self.batch_size = batch_size
+        self.show_progress = show_progress
         
         # Track service statistics
         self.stats = {
@@ -65,16 +67,22 @@ class EmbeddingService:
         embeddings = []
         start_time = time.time()
         
-        # Process in batches for better performance with progress tracking
+        # Process in batches for better performance with optional progress tracking
         total_batches = (len(texts) + self.batch_size - 1) // self.batch_size
-        
-        with tqdm(total=len(texts), desc="🧠 Generating embeddings", unit="texts", 
-                  bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]") as pbar:
+
+        if self.show_progress:
+            with tqdm(total=len(texts), desc="🧠 Generating embeddings", unit="texts",
+                      bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]") as pbar:
+                for i in range(0, len(texts), self.batch_size):
+                    batch = texts[i:i + self.batch_size]
+                    batch_embeddings = self._process_batch(batch)
+                    embeddings.extend(batch_embeddings)
+                    pbar.update(len(batch))
+        else:
             for i in range(0, len(texts), self.batch_size):
                 batch = texts[i:i + self.batch_size]
                 batch_embeddings = self._process_batch(batch)
                 embeddings.extend(batch_embeddings)
-                pbar.update(len(batch))
         
         # Update statistics
         processing_time = time.time() - start_time
