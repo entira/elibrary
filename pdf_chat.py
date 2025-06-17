@@ -34,10 +34,28 @@ from typing import Dict, Any, List
 
 class OllamaLLM:
     """Local Ollama LLM interface for chat responses."""
-    
+
     def __init__(self, model: str = "gemma3:4b-it-qat", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
+        self.session = requests.Session()
+
+    def close(self) -> None:
+        """Close the underlying HTTP session."""
+        if hasattr(self, "session") and self.session:
+            try:
+                self.session.close()
+            finally:
+                self.session = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
     
     def generate_response(self, prompt: str, context: str = "") -> str:
         """Generate response using Ollama."""
@@ -58,7 +76,7 @@ INSTRUCTIONS:
 - If the context doesn't contain relevant information, say so politely
 - Each citation is already in the correct format [Book Title, page X - Library Y]"""
 
-            response = requests.post(
+            response = self.session.post(
                 f"{self.base_url}/api/generate",
                 json={
                     "model": self.model,
