@@ -174,6 +174,11 @@ class PDFLibraryChat:
         print("🔄 Initializing multi-library search...")
         self.multi_retriever = MultiLibraryRetriever(available_libraries)
         self.available_libraries = available_libraries
+
+        # Preload metadata for citation lookup
+        print("📑 Loading metadata cache...")
+        self.all_metadata: List[Dict[str, Any]] = []
+        self.refresh_metadata_cache()
         
         # Initialize Ollama LLM if requested
         self.llm = OllamaLLM() if use_ollama else None
@@ -262,7 +267,28 @@ class PDFLibraryChat:
             return info
         except Exception as e:
             print(f"Error reading {index_path}: {e}")
+
             return {"total_chunks": 0, "total_files": "Unknown", "avg_length": "Unknown"}
+
+
+    def refresh_metadata_cache(self) -> None:
+        """Reload metadata from all available libraries for citation lookup."""
+        self.all_metadata = []
+
+        for lib in self.available_libraries:
+            try:
+                with open(lib["index_file"], 'r', encoding='utf-8') as f:
+                    index_data = json.load(f)
+                metadata_list = index_data.get('metadata', [])
+
+                for meta in metadata_list:
+                    meta['_library_id'] = lib["library_id"]
+                    meta['_library_name'] = lib["name"]
+
+                self.all_metadata.extend(metadata_list)
+            except Exception as e:
+                print(f"Warning: Could not load index for Library {lib['library_id']}: {e}")
+                continue
     
     
     def load_library_stats(self, index_file: str = None) -> Dict[str, Any]:
@@ -456,21 +482,8 @@ class PDFLibraryChat:
     def _add_citations_to_context(self, context_chunks: List[str]) -> List[str]:
         """Add source citations to context chunks by matching with multi-library metadata."""
         try:
-            # Load all index data from all libraries
-            all_metadata = []
-            for lib in self.available_libraries:
-                try:
-                    with open(lib["index_file"], 'r', encoding='utf-8') as f:
-                        index_data = json.load(f)
-                    metadata_list = index_data.get('metadata', [])
-                    # Add library context to each metadata entry
-                    for meta in metadata_list:
-                        meta['_library_id'] = lib["library_id"]
-                        meta['_library_name'] = lib["name"]
-                    all_metadata.extend(metadata_list)
-                except Exception as e:
-                    print(f"Warning: Could not load index for Library {lib['library_id']}: {e}")
-                    continue
+            # Use preloaded metadata for faster lookup
+            all_metadata = self.all_metadata
             
             # Try to match context chunks with metadata
             context_with_citations = []
